@@ -7,8 +7,6 @@ Another amazing product from [PT. Lingkar Kreasi (Circle Creative)][1], released
 
 [O2Session][3] is build for working more powerfull with O2System Framework, but also can be used for integrated with others as standalone version with limited features.
 
-[O2Session][3] not just created on the fly but also store the tables information schema into database, it will become very useful in the future.
-
 [O2Session][3] is based on [CodeIgniter][10] Session Driver, so [O2Session][3] is has also functionality similar with them, but a little bit different at the syntax.
 
 Installation
