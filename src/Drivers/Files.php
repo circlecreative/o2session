@@ -93,7 +93,11 @@ class Files extends Driver implements \SessionHandlerInterface
     {
         parent::__construct( $params );
 
+<<<<<<< HEAD
         if( isset( $this->_config[ 'storage' ][ 'save_path' ] ) )
+=======
+        if( isset( $this->_config[ 'session' ][ 'save_path' ] ) )
+>>>>>>> origin/master
         {
             $this->_config[ 'storage' ][ 'save_path' ] = rtrim( $this->_config[ 'storage' ][ 'save_path' ], '/\\' );
             ini_set( 'session.save_path', $this->_config[ 'storage' ][ 'save_path' ] );

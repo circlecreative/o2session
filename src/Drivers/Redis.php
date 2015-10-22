@@ -107,7 +107,11 @@ class Redis extends Driver implements \SessionHandlerInterface
         }
         else
         {
+<<<<<<< HEAD
             throw new \InvalidArgumentException( 'Session: Invalid Redis save path format: ' . $this->_config[ 'storage' ][ 'save_path' ] );
+=======
+            throw new \InvalidArgumentException( 'Session: Invalid Redis save path format: ' . $this->_config[ 'session' ][ 'save_path' ] );
+>>>>>>> origin/master
         }
 
         if( $this->_config[ 'storage' ][ 'match_ip' ] === TRUE )
@@ -139,7 +143,11 @@ class Redis extends Driver implements \SessionHandlerInterface
 
         $redis = new \Redis();
 
+<<<<<<< HEAD
         if( ! $redis->connect( $this->_config[ 'storage' ][ 'save_path' ][ 'host' ], $this->_config[ 'storage' ][ 'save_path' ][ 'port' ], $this->_config[ 'storage' ][ 'save_path' ][ 'timeout' ] ) )
+=======
+        if( ! $redis->connect( $this->_config[ 'session' ][ 'save_path' ][ 'host' ], $this->_config[ 'session' ][ 'save_path' ][ 'port' ], $this->_config[ 'session' ][ 'save_path' ][ 'timeout' ] ) )
+>>>>>>> origin/master
         {
             throw new \RuntimeException( 'Session: Unable to connect to Redis with the configured settings.' );
         }
@@ -149,7 +157,11 @@ class Redis extends Driver implements \SessionHandlerInterface
         }
         elseif( isset( $this->_config[ 'storage' ][ 'save_path' ][ 'database' ] ) && ! $redis->select( $this->_config[ 'storage' ][ 'save_path' ][ 'database' ] ) )
         {
+<<<<<<< HEAD
             throw new \RuntimeException( 'Session: Unable to select Redis database with index ' . $this->_config[ 'storage' ][ 'save_path' ][ 'database' ] );
+=======
+            throw new \RuntimeException( 'Session: Unable to select Redis database with index ' . $this->_config[ 'session' ][ 'save_path' ][ 'database' ] );
+>>>>>>> origin/master
         }
         else
         {
@@ -225,7 +237,11 @@ class Redis extends Driver implements \SessionHandlerInterface
             $this->_handle->setTimeout( $this->_lock_key, 300 );
             if( $this->_fingerprint !== ( $fingerprint = md5( $session_data ) ) )
             {
+<<<<<<< HEAD
                 if( $this->_handle->set( $this->_key_prefix . $session_id, $session_data, $this->_config[ 'storage' ][ 'lifetime' ] ) )
+=======
+                if( $this->_handle->set( $this->_key_prefix . $session_id, $session_data, $this->_config[ 'session' ][ 'lifetime' ] ) )
+>>>>>>> origin/master
                 {
                     $this->_fingerprint = $fingerprint;
 
@@ -235,7 +251,11 @@ class Redis extends Driver implements \SessionHandlerInterface
                 return FALSE;
             }
 
+<<<<<<< HEAD
             return $this->_handle->setTimeout( $this->_key_prefix . $session_id, $this->_config[ 'storage' ][ 'lifetime' ] );
+=======
+            return $this->_handle->setTimeout( $this->_key_prefix . $session_id, $this->_config[ 'session' ][ 'lifetime' ] );
+>>>>>>> origin/master
         }
 
         return FALSE;

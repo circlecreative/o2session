@@ -335,7 +335,11 @@ class Database extends Driver implements \SessionHandlerInterface
     {
         if( $this->_platform === 'mysql' )
         {
+<<<<<<< HEAD
             $arg = $session_id . ( $this->_config[ 'storage' ][ 'match_ip' ] ? '_' . $_SERVER[ 'REMOTE_ADDR' ] : '' );
+=======
+            $arg = $session_id . ( $this->_config[ 'session' ][ 'match_ip' ] ? '_' . $_SERVER[ 'REMOTE_ADDR' ] : '' );
+>>>>>>> origin/master
             if( $this->_db->query( "SELECT GET_LOCK('" . $arg . "', 300) AS o2session_lock" )->row()->o2session_lock )
             {
                 $this->_lock = $arg;

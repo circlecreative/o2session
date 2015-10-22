@@ -214,7 +214,11 @@ class Memcached extends Driver implements \SessionHandlerInterface
             $this->_handle->replace( $this->_lock_key, time(), 300 );
             if( $this->_fingerprint !== ( $fingerprint = md5( $session_data ) ) )
             {
+<<<<<<< HEAD
                 if( $this->_handle->set( $this->_key_prefix . $session_id, $session_data, $this->_config[ 'storage' ][ 'lifetime' ] ) )
+=======
+                if( $this->_handle->set( $this->_key_prefix . $session_id, $session_data, $this->_config[ 'session' ][ 'lifetime' ] ) )
+>>>>>>> origin/master
                 {
                     $this->_fingerprint = $fingerprint;
 
@@ -224,7 +228,11 @@ class Memcached extends Driver implements \SessionHandlerInterface
                 return FALSE;
             }
 
+<<<<<<< HEAD
             return $this->_handle->touch( $this->_key_prefix . $session_id, $this->_config[ 'storage' ][ 'lifetime' ] );
+=======
+            return $this->_handle->touch( $this->_key_prefix . $session_id, $this->_config[ 'session' ][ 'lifetime' ] );
+>>>>>>> origin/master
         }
 
         return FALSE;
