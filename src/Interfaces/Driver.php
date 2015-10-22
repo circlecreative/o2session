@@ -1,8 +1,8 @@
 <?php
 /**
- * O2System
+ * O2Session
  *
- * An open source application development framework for PHP 5.4 or newer
+ * An open source Session Management Library for PHP 5.4 or newer
  *
  * This content is released under the MIT License (MIT)
  *
@@ -29,12 +29,12 @@
  * @package        O2System
  * @author         Steeven Andrian Salim
  * @copyright      Copyright (c) 2005 - 2014, PT. Lingkar Kreasi (Circle Creative).
- * @license        http://circle-creative.com/products/o2system/license.html
+ * @license        http://o2system.in/features/o2session/license
  * @license        http://opensource.org/licenses/MIT	MIT License
- * @link           http://circle-creative.com
- * @since          Version 2.0
+ * @link           http://o2system.in
  * @filesource
  */
+
 // ------------------------------------------------------------------------
 
 namespace O2System\Session\Interfaces;
@@ -52,19 +52,35 @@ namespace O2System\Session\Interfaces;
  */
 abstract class Driver implements \SessionHandlerInterface
 {
+    /**
+     * Session Driver Configuration
+     *
+     * @access  protected
+     * @type    array
+     */
     protected $_config;
+
+    /**
+     * Session Driver Resource Handle
+     *
+     * @access  protected
+     * @type    resource
+     */
+    protected $_handle;
 
     /**
      * Data fingerprint
      *
-     * @var    bool
+     * @access  protected
+     * @type    bool
      */
     protected $_fingerprint;
 
     /**
      * Lock placeholder
      *
-     * @var    mixed
+     * @access  protected
+     * @type    mixed
      */
     protected $_lock = FALSE;
 
@@ -74,7 +90,8 @@ abstract class Driver implements \SessionHandlerInterface
      * Used to detect session_regenerate_id() calls because PHP only calls
      * write() after regenerating the ID.
      *
-     * @var    string
+     * @access  protected
+     * @type    string
      */
     protected $_session_id;
 
@@ -84,8 +101,6 @@ abstract class Driver implements \SessionHandlerInterface
      * Class constructor
      *
      * @param    array $params Configuration parameters
-     *
-     * @return    void
      */
     public function __construct( &$params )
     {
@@ -100,7 +115,8 @@ abstract class Driver implements \SessionHandlerInterface
      * Internal method to force removal of a cookie by the client
      * when session_destroy() is called.
      *
-     * @return    bool
+     * @access  protected
+     * @return  bool
      */
     protected function _cookie_destroy()
     {
@@ -124,9 +140,10 @@ abstract class Driver implements \SessionHandlerInterface
      * (databases other than PostgreSQL and MySQL) to act as if they
      * do acquire a lock.
      *
-     * @param    string $session_id
+     * @param   string  $session_id
      *
-     * @return    bool
+     * @access  protected
+     * @return  bool
      */
     protected function _get_lock( $session_id )
     {
@@ -140,7 +157,8 @@ abstract class Driver implements \SessionHandlerInterface
     /**
      * Release lock
      *
-     * @return    bool
+     * @access  protected
+     * @return  bool
      */
     protected function _release_lock()
     {

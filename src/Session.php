@@ -1,8 +1,8 @@
 <?php
 /**
- * O2System
+ * O2Session
  *
- * An open source application development framework for PHP 5.4 or newer
+ * An open source Session Management Library for PHP 5.4 or newer
  *
  * This content is released under the MIT License (MIT)
  *
@@ -29,173 +29,193 @@
  * @package        O2System
  * @author         Steeven Andrian Salim
  * @copyright      Copyright (c) 2005 - 2014, PT. Lingkar Kreasi (Circle Creative).
- * @license        http://circle-creative.com/products/o2system/license.html
+ * @license        http://o2system.in/features/o2session/license
  * @license        http://opensource.org/licenses/MIT	MIT License
- * @link           http://circle-creative.com
- * @since          Version 2.0
+ * @link           http://o2system.in
  * @filesource
  */
+
 // ------------------------------------------------------------------------
 
 namespace O2System;
 
 // ------------------------------------------------------------------------
 
+use O2System\Glob\Exception;
+
 /**
  * Session Class
  *
- * Porting from CodeIgniter Session Library Class
+ * Based on CodeIgniter Session Library by Andrey Andreev
  *
- * @package        O2System
- * @subpackage     Libraries/Session
- * @category       System Libraries
- * @author         Andrey Andreev
- *                 Steeven Andrian Salim
- * @link           http://codeigniter.com/user_guide/libraries/sessions.html
+ * @package     o2session
+ * @author      Circle Creative Developer Team
+ * @link        http://o2system.in/features/o2session
  */
 class Session
 {
     /**
-     * Userdata array
+     * Valid Drivers List
      *
-     * Just a reference to $_SESSION, for BC purposes.
+     * @access  protected
+     * @type    array
      */
-    public $userdata;
+    protected $_valid_drivers = array(
+        'database',
+        'files',
+        'memcached',
+        'redis'
+    );
 
+    /**
+     * Session Driver
+     *
+     * @access  protected
+     * @type    string
+     */
     protected $_driver = 'files';
+
+    /**
+     * Session Config
+     *
+     * @access  protected
+     * @type    array
+     */
     protected $_config;
 
     // ------------------------------------------------------------------------
 
     /**
      * Class constructor
+     *
+     * @param   array $config Configuration parameters
+     *
+     * @access  public
      */
-    public function __construct()
+    public function __construct( array $config = array() )
     {
-        // No sessions under CLI
-        if( is_cli() )
+        if( PHP_SAPI === 'cli' OR // No sessions under CLI
+            defined( 'STDIN' ) OR
+            (bool)ini_get( 'session.auto_start' )
+        )
         {
-            Logger::debug( 'Session: Initialization under CLI aborted.' );
-
             return;
         }
-        elseif( (bool)ini_get( 'session.auto_start' ) )
-        {
-            Logger::error( 'Session: session.auto_start is enabled in php.ini. Aborting.' );
 
-            return;
+        // Define Glob Exception
+        $exception = new Exception();
+        $exception->register_path( __DIR__ . '/Views/' );
+        $exception->register_handler();
+
+        if( ! empty( $config ) )
+        {
+            $this->_config = $config;
         }
 
         // Initialize Configuration
         $this->_configure();
 
-        if( ! empty( $this->_config[ 'session' ][ 'driver' ] ) )
+        if( ! empty( $this->_config[ 'storage' ][ 'driver' ] ) )
         {
-            $this->_driver = $this->_config[ 'session' ][ 'driver' ];
+            if( in_array( $this->_config[ 'storage' ][ 'driver' ], $this->_valid_drivers ) )
+            {
+                $this->_driver = $this->_config[ 'storage' ][ 'driver' ];
+            }
         }
 
-        $class = 'O2System\Libraries\Session\Drivers\\' . prepare_class_name( $this->_driver );
+        $class = 'O2System\Session\Drivers\\' . prepare_class_name( $this->_driver );
         $class = new $class( $this->_config );
 
         if( $class instanceof \SessionHandlerInterface )
         {
             session_set_save_handler( $class, TRUE );
-        }
-        else
-        {
-            Logger::error( "Session: Driver '" . $this->_driver . "' doesn't implement Session Handler Interface. Aborting." );
 
-            return;
-        }
-
-        // Sanitize the cookie, because apparently PHP doesn't do that for userspace handlers
-        if( isset( $_COOKIE[ $this->_config[ 'cookie' ][ 'name' ] ] )
-            && (
-                ! is_string( $_COOKIE[ $this->_config[ 'cookie' ][ 'name' ] ] )
-                OR ! preg_match( '/^[0-9a-f]{40}$/', $_COOKIE[ $this->_config[ 'cookie' ][ 'name' ] ] )
+            // Sanitize the cookie, because apparently PHP doesn't do that for userspace handlers
+            if( isset( $_COOKIE[ $this->_config[ 'cookie' ][ 'name' ] ] )
+                && (
+                    ! is_string( $_COOKIE[ $this->_config[ 'cookie' ][ 'name' ] ] )
+                    OR ! preg_match( '/^[0-9a-f]{40}$/', $_COOKIE[ $this->_config[ 'cookie' ][ 'name' ] ] )
+                )
             )
-        )
-        {
-            unset( $_COOKIE[ $this->_config[ 'cookie' ][ 'name' ] ] );
-        }
-
-        session_start();
-
-        // Is session ID auto-regeneration configured? (ignoring ajax requests)
-        if( ( empty( $_SERVER[ 'HTTP_X_REQUESTED_WITH' ] ) OR strtolower( $_SERVER[ 'HTTP_X_REQUESTED_WITH' ] ) !== 'xmlhttprequest' )
-            && ( $regenerate_time = $this->_config[ 'session' ][ 'update_time' ] ) > 0
-        )
-        {
-            if( ! isset( $_SESSION[ '__session_last_regenerate' ] ) )
             {
-                $_SESSION[ '__session_last_regenerate' ] = time();
+                unset( $_COOKIE[ $this->_config[ 'cookie' ][ 'name' ] ] );
             }
-            elseif( $_SESSION[ '__session_last_regenerate' ] < ( time() - $regenerate_time ) )
+
+            session_start();
+
+            // Is session ID auto-regeneration configured? (ignoring ajax requests)
+            if( ( empty( $_SERVER[ 'HTTP_X_REQUESTED_WITH' ] ) OR strtolower( $_SERVER[ 'HTTP_X_REQUESTED_WITH' ] ) !== 'xmlhttprequest' )
+                && ( $regenerate_time = $this->_config[ 'storage' ][ 'regenerate_time' ] ) > 0
+            )
             {
-                $this->regenerate( (bool)$this->_config[ 'session' ][ 'regenerate' ] );
+                if( ! isset( $_SESSION[ '__session_last_regenerate' ] ) )
+                {
+                    $_SESSION[ '__session_last_regenerate' ] = time();
+                }
+                elseif( $_SESSION[ '__session_last_regenerate' ] < ( time() - $regenerate_time ) )
+                {
+                    $this->regenerate_id( (bool)$this->_config[ 'storage' ][ 'regenerate_id' ] );
+                }
             }
-        }
-        // Another work-around ... PHP doesn't seem to send the session cookie
-        // unless it is being currently created or regenerated
-        elseif( isset( $_COOKIE[ $this->_config[ 'cookie' ][ 'name' ] ] ) && $_COOKIE[ $this->_config[ 'cookie' ][ 'name' ] ] === session_id() )
-        {
-            setcookie(
-                $this->_config[ 'cookie' ][ 'name' ],
-                session_id(),
-                ( empty( $this->_config[ 'cookie' ][ 'lifetime' ] ) ? 0 : time() + $this->_config[ 'cookie' ][ 'lifetime' ] ),
-                $this->_config[ 'cookie' ][ 'path' ],
-                $this->_config[ 'cookie' ][ 'domain' ],
-                $this->_config[ 'cookie' ][ 'secure' ],
-                TRUE
-            );
-        }
+            // Another work-around ... PHP doesn't seem to send the session cookie
+            // unless it is being currently created or regenerated
+            elseif( isset( $_COOKIE[ $this->_config[ 'cookie' ][ 'name' ] ] ) && $_COOKIE[ $this->_config[ 'cookie' ][ 'name' ] ] === session_id() )
+            {
+                setcookie(
+                    $this->_config[ 'cookie' ][ 'name' ],
+                    session_id(),
+                    ( empty( $this->_config[ 'cookie' ][ 'lifetime' ] ) ? 0 : time() + $this->_config[ 'cookie' ][ 'lifetime' ] ),
+                    $this->_config[ 'cookie' ][ 'path' ],
+                    $this->_config[ 'cookie' ][ 'domain' ],
+                    $this->_config[ 'cookie' ][ 'secure' ],
+                    TRUE
+                );
+            }
 
-        $this->_init_vars();
-
-        Logger::info( "Session: Class initialized using '" . $this->_driver . "' driver." );
+            $this->_init_vars();
+        }
     }
 
     // ------------------------------------------------------------------------
 
     /**
      * Configuration
+     *
      * Handle input parameters and configuration defaults
      *
-     * @return    void
+     * @access  protected
+     * @return  void
      */
     protected function _configure()
     {
-        $this->_config[ 'session' ] = Config::session();
-        $this->_config[ 'cookie' ] = Config::cookie();
-
         // Configure Session
-        if( empty( $this->_config[ 'session' ][ 'name' ] ) )
+        if( empty( $this->_config[ 'storage' ][ 'name' ] ) )
         {
-            $this->_config[ 'session' ][ 'name' ] = ini_get( 'session.name' );
+            $this->_config[ 'storage' ][ 'name' ] = ini_get( 'session.name' );
         }
         else
         {
-            ini_set( 'session.name', $this->_config[ 'session' ][ 'name' ] );
+            ini_set( 'session.name', $this->_config[ 'storage' ][ 'name' ] );
         }
 
-        if( empty( $this->_config[ 'session' ][ 'lifetime' ] ) )
+        if( empty( $this->_config[ 'storage' ][ 'lifetime' ] ) )
         {
-            $this->_config[ 'session' ][ 'lifetime' ] = (int)ini_get( 'session.gc_maxlifetime' );
+            $this->_config[ 'storage' ][ 'lifetime' ] = (int)ini_get( 'session.gc_maxlifetime' );
         }
         else
         {
-            ini_set( 'session.gc_maxlifetime', $this->_config[ 'session' ][ 'lifetime' ] );
+            ini_set( 'session.gc_maxlifetime', $this->_config[ 'storage' ][ 'lifetime' ] );
         }
 
         // Configure Session Cookie
         if( empty( $this->_config[ 'cookie' ][ 'lifetime' ] ) )
         {
-            $this->_config[ 'cookie' ][ 'lifetime' ] = (int)$this->_config[ 'session' ][ 'lifetime' ];
+            $this->_config[ 'cookie' ][ 'lifetime' ] = (int)$this->_config[ 'storage' ][ 'lifetime' ];
         }
 
         if( empty( $this->_config[ 'cookie' ][ 'name' ] ) )
         {
-            $this->_config[ 'cookie' ][ 'name' ] = $this->_config[ 'session' ][ 'name' ];
+            $this->_config[ 'cookie' ][ 'name' ] = $this->_config[ 'storage' ][ 'name' ];
         }
 
         session_set_cookie_params(
@@ -223,7 +243,7 @@ class Session
      * Clears old "flash" data, marks the new one for deletion and handles
      * "temp" data deletion.
      *
-     * @return    void
+     * @access  protected
      */
     protected function _init_vars()
     {
@@ -250,8 +270,6 @@ class Session
                 unset( $_SESSION[ '__session_vars' ] );
             }
         }
-
-        $this->userdata =& $_SESSION;
     }
 
     // ------------------------------------------------------------------------
@@ -259,9 +277,10 @@ class Session
     /**
      * Mark as flash
      *
-     * @param    mixed $key Session data key(s)
+     * @param   mixed $key Session data key(s)
      *
-     * @return    bool
+     * @access  public
+     * @return  bool
      */
     public function mark_as_flash( $key )
     {
@@ -299,7 +318,8 @@ class Session
     /**
      * Get flash keys
      *
-     * @return    array
+     * @access  public
+     * @return  array
      */
     public function get_flash_keys()
     {
@@ -322,9 +342,10 @@ class Session
     /**
      * Unmark flash
      *
-     * @param    mixed $key Session data key(s)
+     * @param   mixed $key Session data key(s)
      *
-     * @return    void
+     * @access  public
+     * @return  void
      */
     public function unmark_flash( $key )
     {
@@ -354,10 +375,11 @@ class Session
     /**
      * Mark as temp
      *
-     * @param    mixed $key Session data key(s)
-     * @param    int   $ttl Time-to-live in seconds
+     * @param   mixed $key Session data key(s)
+     * @param   int   $ttl Time-to-live in seconds
      *
-     * @return    bool
+     * @access  public
+     * @return  bool
      */
     public function mark_as_temp( $key, $ttl = 300 )
     {
@@ -410,7 +432,8 @@ class Session
     /**
      * Get temp keys
      *
-     * @return    array
+     * @access  public
+     * @return  array
      */
     public function get_temp_keys()
     {
@@ -433,9 +456,9 @@ class Session
     /**
      * Unmark flash
      *
-     * @param    mixed $key Session data key(s)
+     * @param   mixed $key Session data key(s)
      *
-     * @return    void
+     * @access  public
      */
     public function unmark_temp( $key )
     {
@@ -465,9 +488,10 @@ class Session
     /**
      * __get()
      *
-     * @param    string $key 'session_id' or a session data key
+     * @param   string $key 'session_id' or a session data key
      *
-     * @return    mixed
+     * @access  public
+     * @return  mixed
      */
     public function __get( $key )
     {
@@ -490,10 +514,10 @@ class Session
     /**
      * __set()
      *
-     * @param    string $key   Session data key
-     * @param    mixed  $value Session data value
+     * @param   string $key   Session data key
+     * @param   mixed  $value Session data value
      *
-     * @return    void
+     * @access  public
      */
     public function __set( $key, $value )
     {
@@ -507,7 +531,7 @@ class Session
      *
      * Legacy Session compatibility method
      *
-     * @return    void
+     * @access  public
      */
     public function destroy()
     {
@@ -521,11 +545,11 @@ class Session
      *
      * Legacy Session compatibility method
      *
-     * @param    bool $destroy Destroy old session data flag
+     * @param   bool $destroy Destroy old session data flag
      *
-     * @return    void
+     * @access  public
      */
-    public function regenerate( $destroy = FALSE )
+    public function regenerate_id( $destroy = FALSE )
     {
         $_SESSION[ '__session_last_regenerate' ] = time();
         session_regenerate_id( $destroy );
@@ -538,7 +562,8 @@ class Session
      *
      * Legacy Session compatibility method
      *
-     * @returns    array
+     * @access  public
+     * @return  array
      */
     public function &get_userdata()
     {
@@ -552,9 +577,10 @@ class Session
      *
      * Legacy Session compatibility method
      *
-     * @param    string $key Session data key
+     * @param   string $key Session data key
      *
-     * @return    mixed    Session data value or NULL if not found
+     * @access  public
+     * @return  mixed   Session data value or NULL if not found
      */
     public function userdata( $key = NULL )
     {
@@ -592,10 +618,10 @@ class Session
      *
      * Legacy Session compatibility method
      *
-     * @param    mixed $data  Session data key or an associative array
-     * @param    mixed $value Value to store
+     * @param   mixed $data  Session data key or an associative array
+     * @param   mixed $value Value to store
      *
-     * @return    void
+     * @access  public
      */
     public function set_userdata( $data, $value = NULL )
     {
@@ -619,9 +645,9 @@ class Session
      *
      * Legacy Session compatibility method
      *
-     * @param    mixed $data Session data key(s)
+     * @param   mixed $key Session data key(s)
      *
-     * @return    void
+     * @access  public
      */
     public function unset_userdata( $key )
     {
@@ -645,7 +671,8 @@ class Session
      *
      * Legacy Session compatibility method
      *
-     * @return    array    $_SESSION, excluding flash data items
+     * @access  public
+     * @return  array $_SESSION, excluding flash data items
      */
     public function all_userdata()
     {
@@ -659,9 +686,10 @@ class Session
      *
      * Legacy Session compatibility method
      *
-     * @param    string $key Session data key
+     * @param   string $key Session data key
      *
-     * @return    bool
+     * @access  public
+     * @return  bool
      */
     public function has_userdata( $key )
     {
@@ -675,9 +703,10 @@ class Session
      *
      * Legacy Session compatibility method
      *
-     * @param    string $key Session data key
+     * @param   string $key Session data key
      *
-     * @return    mixed    Session data value or NULL if not found
+     * @access  public
+     * @return  mixed   Session data value or NULL if not found
      */
     public function flashdata( $key = NULL )
     {
@@ -708,10 +737,10 @@ class Session
      *
      * Legacy Session compatibiliy method
      *
-     * @param    mixed $data  Session data key or an associative array
-     * @param    mixed $value Value to store
+     * @param   mixed $data  Session data key or an associative array
+     * @param   mixed $value Value to store
      *
-     * @return    void
+     * @access  public
      */
     public function set_flashdata( $data, $value = NULL )
     {
@@ -726,9 +755,9 @@ class Session
      *
      * Legacy Session compatibility method
      *
-     * @param    mixed $key Session data key(s)
+     * @param   mixed $key Session data key(s)
      *
-     * @return    void
+     * @access  public
      */
     public function keep_flashdata( $key )
     {
@@ -742,9 +771,10 @@ class Session
      *
      * Legacy Session compatibility method
      *
-     * @param    string $key Session data key
+     * @param   string $key Session data key
      *
-     * @return    mixed    Session data value or NULL if not found
+     * @access  public
+     * @return  mixed   Session data value or NULL if not found
      */
     public function tempdata( $key = NULL )
     {
@@ -775,11 +805,11 @@ class Session
      *
      * Legacy Session compatibility method
      *
-     * @param    mixed $data  Session data key or an associative array of items
-     * @param    mixed $value Value to store
-     * @param    int   $ttl   Time-to-live in seconds
+     * @param   mixed $data  Session data key or an associative array of items
+     * @param   mixed $value Value to store
+     * @param   int   $ttl   Time-to-live in seconds
      *
-     * @return    void
+     * @access  public
      */
     public function set_tempdata( $data, $value = NULL, $ttl = 300 )
     {
@@ -794,16 +824,24 @@ class Session
      *
      * Legacy Session compatibility method
      *
-     * @param    mixed $key Session data key(s)
+     * @param   mixed $key Session data key(s)
      *
-     * @return    void
+     * @access  public
      */
     public function unset_tempdata( $key )
     {
         $this->unmark_temp( $key );
     }
 
-    public function php_started()
+    /**
+     * Started
+     *
+     * Check if the PHP Session is has been started.
+     *
+     * @access  public
+     * @return  bool
+     */
+    public function started()
     {
         if( php_sapi_name() !== 'cli' )
         {
@@ -819,84 +857,4 @@ class Session
 
         return FALSE;
     }
-
-    // --------------------------------------------------------------------
-
-    /**
-     * @param null  $user_id
-     * @param null  $status
-     * @param array $action
-     *
-     * @return $this|void
-     */
-    public function start_log( $user_id = NULL, $status = NULL, $action = array() )
-    {
-        if( $user_id == NULL ) return;
-
-        if( $status == NULL && empty( $action ) ) return;
-
-        $session_start = now();
-
-        $session_log = array(
-            'user_id'    => $user_id,
-            'user_agent' => substr( $this->CI->input->user_agent(), 0, 120 ),
-            'id'         => $this->userdata[ 'session_id' ],
-            'start'      => $session_start,
-            'status'     => $status,
-            'ip_address' => $this->CI->input->ip_address(),
-        );
-
-        $session_log = array_merge( $session_log, $action );
-
-        $this->CI->db->query( $this->CI->db->insert_string( 'system_users_audit_trails', $session_log ) );
-
-        $this->set_userdata( 'log_id', $this->CI->db->insert_id() );
-        $this->set_userdata( 'log_start', $session_start );
-
-        return $this;
-    }
-
-    // --------------------------------------------------------------------
-
-    /**
-     * End Log
-     */
-    public function end_log()
-    {
-        if( empty( $this->userdata[ 'log_id' ] ) ) return;
-
-        $this->CI->db->query( $this->CI->db->update_string( 'system_users_audit_trails', array(
-            'end'      => now(),
-            'duration' => $this->userdata[ 'log_start' ] - $this->now,
-        ),
-                                                            array( 'id' => $this->userdata[ 'log_id' ] )
-        ) );
-
-        $this->unset_userdata( array( 'log_id', 'log_start' ) );
-    }
-
-    // --------------------------------------------------------------------
-
-    /**
-     * @param bool $reset
-     *
-     * @return bool|int
-     */
-    public function attempt( $reset = FALSE )
-    {
-        if( $reset === 'reset' )
-        {
-            $this->unset_userdata( 'attempt' );
-
-            return FALSE;
-        }
-        else
-        {
-            $attempt = ( empty( $this->userdata[ 'attempt' ] ) ? 1 : $this->userdata[ 'attempt' ] );
-            $this->set_userdata( 'attempt', $attempt + 1 );
-
-            return $attempt;
-        }
-    }
-
 }
