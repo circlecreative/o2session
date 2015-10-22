@@ -1,8 +1,8 @@
 <?php
 /**
- * O2System
+ * O2Session
  *
- * An open source application development framework for PHP 5.4 or newer
+ * An open source Session Management Library for PHP 5.4 or newer
  *
  * This content is released under the MIT License (MIT)
  *
@@ -29,10 +29,9 @@
  * @package        O2System
  * @author         Steeven Andrian Salim
  * @copyright      Copyright (c) 2005 - 2014, PT. Lingkar Kreasi (Circle Creative).
- * @license        http://circle-creative.com/products/o2system/license.html
+ * @license        http://o2system.in/features/o2session/license
  * @license        http://opensource.org/licenses/MIT	MIT License
- * @link           http://circle-creative.com
- * @since          Version 2.0
+ * @link           http://o2system.in
  * @filesource
  */
 
@@ -43,45 +42,41 @@ namespace O2System\Session\Drivers;
 // ------------------------------------------------------------------------
 
 use O2System\Session\Interfaces\Driver;
-use O2System\Session\Interfaces\Handler;
 
 /**
- * CodeIgniter Session Files Driver
+ * Session Files Driver
  *
- * @package       CodeIgniter
- * @subpackage    Libraries
+ * Based on CodeIgniter Session Files Driver by Andrey Andreev
+ *
+ * @package       o2session
+ * @subpackage    Drivers
  * @category      Sessions
- * @author        Andrey Andreev
- * @link          http://codeigniter.com/user_guide/libraries/sessions.html
+ * @author        Circle Creative Developer Team
+ * @link          http://o2system.in/features/o2session/user-guide/drivers/files
  */
 class Files extends Driver implements \SessionHandlerInterface
 {
-
     /**
      * Save path
      *
-     * @var    string
+     * @access  protected
+     * @type    string
      */
     protected $_save_path;
 
     /**
-     * File handle
-     *
-     * @var    resource
-     */
-    protected $_file_handle;
-
-    /**
      * File name
      *
-     * @var    resource
+     * @access  protected
+     * @type    resource
      */
     protected $_file_path;
 
     /**
      * File new flag
      *
-     * @var    bool
+     * @access  protected
+     * @type    bool
      */
     protected $_file_new;
 
@@ -90,15 +85,13 @@ class Files extends Driver implements \SessionHandlerInterface
     /**
      * Class constructor
      *
-     * @param    array $params Configuration parameters
+     * @param   array   $params Configuration parameters
      *
-     * @return    void
+     * @access  public
      */
     public function __construct( &$params )
     {
         parent::__construct( $params );
-
-        $this->_config[ 'session' ][ 'save_path' ] = Config::cache( 'path' ) . $this->_config[ 'session' ][ 'save_path' ];
 
         if( isset( $this->_config[ 'session' ][ 'save_path' ] ) )
         {
@@ -118,23 +111,24 @@ class Files extends Driver implements \SessionHandlerInterface
      *
      * Sanitizes the save_path directory.
      *
-     * @param    string $save_path Path to session files' directory
-     * @param    string $name      Session cookie name
+     * @param   string  $save_path  Path to session files' directory
+     * @param   string  $name       Session cookie name
      *
-     * @return    bool
+     * @return  bool
+     * @throws  \RuntimeException
      */
     public function open( $save_path, $name )
     {
         if( ! is_dir( $save_path ) )
         {
-            if( ! mkdir( $save_path, Config::permissions( 'folder' ), TRUE ) )
+            if( ! mkdir( $save_path, 0775, TRUE ) )
             {
-                throw new \Exception( "Session: Configured save path '" . $save_path . "' is not a directory, doesn't exist or cannot be created." );
+                throw new \RuntimeException( "Session: Configured save path '" . $save_path . "' is not a directory, doesn't exist or cannot be created." );
             }
         }
         elseif( ! is_writable( $save_path ) )
         {
-            throw new \Exception( "Session: Configured save path '" . $save_path . "' is not writable by the PHP process." );
+            throw new \RuntimeException( "Session: Configured save path '" . $save_path . "' is not writable by the PHP process." );
         }
 
         $this->_config[ 'session' ][ 'save_path' ] = $save_path;
@@ -154,9 +148,10 @@ class Files extends Driver implements \SessionHandlerInterface
      *
      * Reads session data and acquires a lock
      *
-     * @param    string $session_id Session ID
+     * @param   string  $session_id Session ID
      *
-     * @return    string    Serialized session data
+     * @access  public
+     * @return  string  Serialized session data
      */
     public function read( $session_id )
     {
@@ -166,32 +161,27 @@ class Files extends Driver implements \SessionHandlerInterface
 
         // This might seem weird, but PHP 5.6 introduces session_reset(),
         // which re-reads session data
-        if( $this->_file_handle === NULL )
+        if( $this->_handle === NULL )
         {
             // Just using fopen() with 'c+b' mode would be perfect, but it is only
             // available since PHP 5.2.6 and we have to set permissions for new files,
             // so we'd have to hack around this ...
             if( ( $this->_file_new = ! file_exists( $this->_file_path . $session_id ) ) === TRUE )
             {
-                if( ( $this->_file_handle = fopen( $this->_file_path . $session_id, 'w+b' ) ) === FALSE )
+                if( ( $this->_handle = fopen( $this->_file_path . $session_id, 'w+b' ) ) === FALSE )
                 {
-                    Logger::error( "Session: File '" . $this->_file_path . $session_id . "' doesn't exist and cannot be created." );
-
                     return FALSE;
                 }
             }
-            elseif( ( $this->_file_handle = fopen( $this->_file_path . $session_id, 'r+b' ) ) === FALSE )
+            elseif( ( $this->_handle = fopen( $this->_file_path . $session_id, 'r+b' ) ) === FALSE )
             {
-                Logger::error( "Session: Unable to open file '" . $this->_file_path . $session_id . "'." );
-
                 return FALSE;
             }
 
-            if( flock( $this->_file_handle, LOCK_EX ) === FALSE )
+            if( flock( $this->_handle, LOCK_EX ) === FALSE )
             {
-                Logger::error( "Session: Unable to obtain lock for file '" . $this->_file_path . $session_id . "'." );
-                fclose( $this->_file_handle );
-                $this->_file_handle = NULL;
+                fclose( $this->_handle );
+                $this->_handle = NULL;
 
                 return FALSE;
             }
@@ -201,7 +191,7 @@ class Files extends Driver implements \SessionHandlerInterface
 
             if( $this->_file_new )
             {
-                chmod( $this->_file_path . $session_id, Config::permissions( 'file' ) );
+                chmod( $this->_file_path . $session_id, 0644 );
                 $this->_fingerprint = md5( '' );
 
                 return '';
@@ -209,13 +199,13 @@ class Files extends Driver implements \SessionHandlerInterface
         }
         else
         {
-            rewind( $this->_file_handle );
+            rewind( $this->_handle );
         }
 
         $session_data = '';
         for( $read = 0, $length = filesize( $this->_file_path . $session_id ); $read < $length; $read += strlen( $buffer ) )
         {
-            if( ( $buffer = fread( $this->_file_handle, $length - $read ) ) === FALSE )
+            if( ( $buffer = fread( $this->_handle, $length - $read ) ) === FALSE )
             {
                 break;
             }
@@ -235,8 +225,8 @@ class Files extends Driver implements \SessionHandlerInterface
      *
      * Writes (create / update) session data
      *
-     * @param    string $session_id   Session ID
-     * @param    string $session_data Serialized session data
+     * @param   string  $session_id     Session ID
+     * @param   string  $session_data   Serialized session data
      *
      * @return    bool
      */
@@ -249,7 +239,7 @@ class Files extends Driver implements \SessionHandlerInterface
             return FALSE;
         }
 
-        if( ! is_resource( $this->_file_handle ) )
+        if( ! is_resource( $this->_handle ) )
         {
             return FALSE;
         }
@@ -262,15 +252,15 @@ class Files extends Driver implements \SessionHandlerInterface
 
         if( ! $this->_file_new )
         {
-            ftruncate( $this->_file_handle, 0 );
-            rewind( $this->_file_handle );
+            ftruncate( $this->_handle, 0 );
+            rewind( $this->_handle );
         }
 
         if( ( $length = strlen( $session_data ) ) > 0 )
         {
             for( $written = 0; $written < $length; $written += $result )
             {
-                if( ( $result = fwrite( $this->_file_handle, substr( $session_data, $written ) ) ) === FALSE )
+                if( ( $result = fwrite( $this->_handle, substr( $session_data, $written ) ) ) === FALSE )
                 {
                     break;
                 }
@@ -279,7 +269,6 @@ class Files extends Driver implements \SessionHandlerInterface
             if( ! is_int( $result ) )
             {
                 $this->_fingerprint = md5( substr( $session_data, 0, $written ) );
-                Logger::error( 'Session: Unable to write data.' );
 
                 return FALSE;
             }
@@ -297,16 +286,17 @@ class Files extends Driver implements \SessionHandlerInterface
      *
      * Releases locks and closes file descriptor.
      *
-     * @return    bool
+     * @access  public
+     * @return  bool
      */
     public function close()
     {
-        if( is_resource( $this->_file_handle ) )
+        if( is_resource( $this->_handle ) )
         {
-            flock( $this->_file_handle, LOCK_UN );
-            fclose( $this->_file_handle );
+            flock( $this->_handle, LOCK_UN );
+            fclose( $this->_handle );
 
-            $this->_file_handle = $this->_file_new = $this->_session_id = NULL;
+            $this->_handle = $this->_file_new = $this->_session_id = NULL;
 
             return TRUE;
         }
@@ -321,9 +311,10 @@ class Files extends Driver implements \SessionHandlerInterface
      *
      * Destroys the current session.
      *
-     * @param    string $session_id Session ID
+     * @param   string  $session_id Session ID
      *
-     * @return    bool
+     * @access  public
+     * @return  bool
      */
     public function destroy( $session_id )
     {
@@ -352,16 +343,15 @@ class Files extends Driver implements \SessionHandlerInterface
      *
      * Deletes expired sessions
      *
-     * @param    int $maxlifetime Maximum lifetime of sessions
+     * @param   int $maxlifetime    Maximum lifetime of sessions
      *
-     * @return    bool
+     * @access  public
+     * @return  bool
      */
     public function gc( $maxlifetime )
     {
         if( ! is_dir( $this->_config[ 'session' ][ 'save_path' ] ) OR ( $directory = opendir( $this->_config[ 'session' ][ 'save_path' ] ) ) === FALSE )
         {
-            Logger::debug( "Session: Garbage collector couldn't list files under directory '" . $this->_config[ 'session' ][ 'save_path' ] . "'." );
-
             return FALSE;
         }
 
@@ -392,15 +382,4 @@ class Files extends Driver implements \SessionHandlerInterface
 
         return TRUE;
     }
-
-    public function create_sid()
-    {
-        session_regenerate_id();
-
-        return session_id();
-    }
-
 }
-
-/* End of file Files.php */
-/* Location: ./o2system/libraries/sessiion/drivers/Files.php */

@@ -1,8 +1,8 @@
 <?php
 /**
- * O2System
+ * O2Session
  *
- * An open source application development framework for PHP 5.4 or newer
+ * An open source Session Management Library for PHP 5.4 or newer
  *
  * This content is released under the MIT License (MIT)
  *
@@ -29,10 +29,9 @@
  * @package        O2System
  * @author         Steeven Andrian Salim
  * @copyright      Copyright (c) 2005 - 2014, PT. Lingkar Kreasi (Circle Creative).
- * @license        http://circle-creative.com/products/o2system/license.html
+ * @license        http://o2system.in/features/o2session/license
  * @license        http://opensource.org/licenses/MIT	MIT License
- * @link           http://circle-creative.com
- * @since          Version 2.0
+ * @link           http://o2system.in
  * @filesource
  */
 
@@ -42,40 +41,34 @@ namespace O2System\Session\Drivers;
 
 // ------------------------------------------------------------------------
 
-use O2System\Core\Gears\Logger;
 use O2System\Session\Interfaces\Driver;
-use O2System\Session\Interfaces\Handler;
 
 /**
- * CodeIgniter Session Memcached Driver
+ * Session Memcached Driver
  *
- * @package       CodeIgniter
- * @subpackage    Libraries
+ * Based on CodeIgniter Session Memcached Driver by Andrey Andreev
+ *
+ * @package       o2session
+ * @subpackage    Drivers
  * @category      Sessions
- * @author        Andrey Andreev
- * @link          http://codeigniter.com/user_guide/libraries/sessions.html
+ * @author        Circle Creative Developer Team
+ * @link          http://o2system.in/features/o2session/user-guide/drivers/memcached
  */
 class Memcached extends Driver implements \SessionHandlerInterface
 {
-
-    /**
-     * Memcached instance
-     *
-     * @var    Memcached
-     */
-    protected $_memcached;
-
     /**
      * Key prefix
      *
-     * @var    string
+     * @access  protected
+     * @type    string
      */
-    protected $_key_prefix = 'ci_session:';
+    protected $_key_prefix = 'o2session:';
 
     /**
      * Lock key
      *
-     * @var    string
+     * @access  protected
+     * @type    string
      */
     protected $_lock_key;
 
@@ -84,9 +77,10 @@ class Memcached extends Driver implements \SessionHandlerInterface
     /**
      * Class constructor
      *
-     * @param    array $params Configuration parameters
+     * @param   array   $params Configuration parameters
      *
-     * @return    void
+     * @access  public
+     * @throws  \InvalidArgumentException
      */
     public function __construct( &$params )
     {
@@ -94,7 +88,7 @@ class Memcached extends Driver implements \SessionHandlerInterface
 
         if( empty( $this->_config[ 'session' ][ 'save_path' ] ) )
         {
-            Logger::error( 'Session: No Memcached save path configured.' );
+            throw new \InvalidArgumentException( 'Session: No Memcached save path configured.' );
         }
 
         if( $this->_config[ 'session' ][ 'match_ip' ] === TRUE )
@@ -110,26 +104,27 @@ class Memcached extends Driver implements \SessionHandlerInterface
      *
      * Sanitizes save_path and initializes connections.
      *
-     * @param    string $save_path Server path(s)
-     * @param    string $name      Session cookie name, unused
+     * @uses    \Memcached
      *
-     * @return    bool
+     * @param   string  $save_path  Server path(s)
+     * @param   string  $name       Session cookie name, unused
+     *
+     * @access  public
+     * @return  bool
      */
     public function open( $save_path, $name )
     {
-        $this->_memcached = new Memcached();
-        $this->_memcached->setOption( Memcached::OPT_BINARY_PROTOCOL, TRUE ); // required for touch() usage
+        $this->_handle = new \Memcached();
+        $this->_handle->setOption( \Memcached::OPT_BINARY_PROTOCOL, TRUE ); // required for touch() usage
         $server_list = array();
-        foreach( $this->_memcached->getServerList() as $server )
+        foreach( $this->_handle->getServerList() as $server )
         {
             $server_list[ ] = $server[ 'host' ] . ':' . $server[ 'port' ];
         }
 
         if( ! preg_match_all( '#,?([^,:]+)\:(\d{1,5})(?:\:(\d+))?#', $this->_config[ 'session' ][ 'save_path' ], $matches, PREG_SET_ORDER ) )
         {
-            $this->_memcached = NULL;
-            Logger::error( 'Session: Invalid Memcached save path format: ' . $this->_config[ 'session' ][ 'save_path' ] );
-
+            $this->_handle = NULL;
             return FALSE;
         }
 
@@ -138,15 +133,10 @@ class Memcached extends Driver implements \SessionHandlerInterface
             // If Memcached already has this server (or if the port is invalid), skip it
             if( in_array( $match[ 1 ] . ':' . $match[ 2 ], $server_list, TRUE ) )
             {
-                Logger::debug( 'Session: Memcached server pool already has ' . $match[ 1 ] . ':' . $match[ 2 ] );
                 continue;
             }
 
-            if( ! $this->_memcached->addServer( $match[ 1 ], $match[ 2 ], isset( $match[ 3 ] ) ? $match[ 3 ] : 0 ) )
-            {
-                Logger::error( 'Could not add ' . $match[ 1 ] . ':' . $match[ 2 ] . ' to Memcached server pool.' );
-            }
-            else
+            if( $this->_handle->addServer( $match[ 1 ], $match[ 2 ], isset( $match[ 3 ] ) ? $match[ 3 ] : 0 ) )
             {
                 $server_list[ ] = $match[ 1 ] . ':' . $match[ 2 ];
             }
@@ -154,8 +144,6 @@ class Memcached extends Driver implements \SessionHandlerInterface
 
         if( empty( $server_list ) )
         {
-            Logger::error( 'Session: Memcached server pool is empty.' );
-
             return FALSE;
         }
 
@@ -169,18 +157,19 @@ class Memcached extends Driver implements \SessionHandlerInterface
      *
      * Reads session data and acquires a lock
      *
-     * @param    string $session_id Session ID
+     * @param   string  $session_id Session ID
      *
-     * @return    string    Serialized session data
+     * @access  public
+     * @return  string  Serialized session data
      */
     public function read( $session_id )
     {
-        if( isset( $this->_memcached ) && $this->_get_lock( $session_id ) )
+        if( isset( $this->_handle ) && $this->_get_lock( $session_id ) )
         {
             // Needed by write() to detect session_regenerate_id() calls
             $this->_session_id = $session_id;
 
-            $session_data = (string)$this->_memcached->get( $this->_key_prefix . $session_id );
+            $session_data = (string)$this->_handle->get( $this->_key_prefix . $session_id );
             $this->_fingerprint = md5( $session_data );
 
             return $session_data;
@@ -196,14 +185,15 @@ class Memcached extends Driver implements \SessionHandlerInterface
      *
      * Writes (create / update) session data
      *
-     * @param    string $session_id   Session ID
-     * @param    string $session_data Serialized session data
+     * @param   string  $session_id     Session ID
+     * @param   string  $session_data   Serialized session data
      *
-     * @return    bool
+     * @access  public
+     * @return  bool
      */
     public function write( $session_id, $session_data )
     {
-        if( ! isset( $this->_memcached ) )
+        if( ! isset( $this->_handle ) )
         {
             return FALSE;
         }
@@ -221,10 +211,10 @@ class Memcached extends Driver implements \SessionHandlerInterface
 
         if( isset( $this->_lock_key ) )
         {
-            $this->_memcached->replace( $this->_lock_key, time(), 300 );
+            $this->_handle->replace( $this->_lock_key, time(), 300 );
             if( $this->_fingerprint !== ( $fingerprint = md5( $session_data ) ) )
             {
-                if( $this->_memcached->set( $this->_key_prefix . $session_id, $session_data, $this->_config[ 'session' ][ 'lifetime' ] ) )
+                if( $this->_handle->set( $this->_key_prefix . $session_id, $session_data, $this->_config[ 'session' ][ 'lifetime' ] ) )
                 {
                     $this->_fingerprint = $fingerprint;
 
@@ -234,7 +224,7 @@ class Memcached extends Driver implements \SessionHandlerInterface
                 return FALSE;
             }
 
-            return $this->_memcached->touch( $this->_key_prefix . $session_id, $this->_config[ 'session' ][ 'lifetime' ] );
+            return $this->_handle->touch( $this->_key_prefix . $session_id, $this->_config[ 'session' ][ 'lifetime' ] );
         }
 
         return FALSE;
@@ -247,19 +237,20 @@ class Memcached extends Driver implements \SessionHandlerInterface
      *
      * Releases locks and closes connection.
      *
-     * @return    bool
+     * @access  public
+     * @return  bool
      */
     public function close()
     {
-        if( isset( $this->_memcached ) )
+        if( isset( $this->_handle ) )
         {
-            isset( $this->_lock_key ) && $this->_memcached->delete( $this->_lock_key );
-            if( ! $this->_memcached->quit() )
+            isset( $this->_lock_key ) && $this->_handle->delete( $this->_lock_key );
+            if( ! $this->_handle->quit() )
             {
                 return FALSE;
             }
 
-            $this->_memcached = NULL;
+            $this->_handle = NULL;
 
             return TRUE;
         }
@@ -274,15 +265,16 @@ class Memcached extends Driver implements \SessionHandlerInterface
      *
      * Destroys the current session.
      *
-     * @param    string $session_id Session ID
+     * @param   string  $session_id Session ID
      *
-     * @return    bool
+     * @access  public
+     * @return  bool
      */
     public function destroy( $session_id )
     {
-        if( isset( $this->_memcached, $this->_lock_key ) )
+        if( isset( $this->_handle, $this->_lock_key ) )
         {
-            $this->_memcached->delete( $this->_key_prefix . $session_id );
+            $this->_handle->delete( $this->_key_prefix . $session_id );
 
             return $this->_cookie_destroy();
         }
@@ -297,9 +289,10 @@ class Memcached extends Driver implements \SessionHandlerInterface
      *
      * Deletes expired sessions
      *
-     * @param    int $maxlifetime Maximum lifetime of sessions
+     * @param   int $maxlifetime    Maximum lifetime of sessions
      *
-     * @return    bool
+     * @access  public
+     * @return  bool
      */
     public function gc( $maxlifetime )
     {
@@ -314,15 +307,16 @@ class Memcached extends Driver implements \SessionHandlerInterface
      *
      * Acquires an (emulated) lock.
      *
-     * @param    string $session_id Session ID
+     * @param   string  $session_id Session ID
      *
-     * @return    bool
+     * @access  public
+     * @return  bool
      */
     protected function _get_lock( $session_id )
     {
         if( isset( $this->_lock_key ) )
         {
-            return $this->_memcached->replace( $this->_lock_key, time(), 300 );
+            return $this->_handle->replace( $this->_lock_key, time(), 300 );
         }
 
         // 30 attempts to obtain a lock, in case another request already has it
@@ -330,17 +324,15 @@ class Memcached extends Driver implements \SessionHandlerInterface
         $attempt = 0;
         do
         {
-            if( $this->_memcached->get( $lock_key ) )
+            if( $this->_handle->get( $lock_key ) )
             {
                 sleep( 1 );
                 continue;
             }
 
-            if( ! $this->_memcached->set( $lock_key, time(), 300 ) )
+            if( ! $this->_handle->set( $lock_key, time(), 300 ) )
             {
-                Logger::error( 'Session: Error while trying to obtain lock for ' . $this->_key_prefix . $session_id );
-
-                return FALSE;
+               return FALSE;
             }
 
             $this->_lock_key = $lock_key;
@@ -350,8 +342,6 @@ class Memcached extends Driver implements \SessionHandlerInterface
 
         if( $attempt === 30 )
         {
-            Logger::error( 'Session: Unable to obtain lock for ' . $this->_key_prefix . $session_id . ' after 30 attempts, aborting.' );
-
             return FALSE;
         }
 
@@ -367,16 +357,17 @@ class Memcached extends Driver implements \SessionHandlerInterface
      *
      * Releases a previously acquired lock
      *
-     * @return    bool
+     * @uses    \Memcached
+     *
+     * @access  protected
+     * @return  bool
      */
     protected function _release_lock()
     {
-        if( isset( $this->_memcached, $this->_lock_key ) && $this->_lock )
+        if( isset( $this->_handle, $this->_lock_key ) && $this->_lock )
         {
-            if( ! $this->_memcached->delete( $this->_lock_key ) && $this->_memcached->getResultCode() !== Memcached::RES_NOTFOUND )
+            if( ! $this->_handle->delete( $this->_lock_key ) && $this->_handle->getResultCode() !== \Memcached::RES_NOTFOUND )
             {
-                Logger::error( 'Session: Error while trying to free lock for ' . $this->_lock_key );
-
                 return FALSE;
             }
 
@@ -388,6 +379,3 @@ class Memcached extends Driver implements \SessionHandlerInterface
     }
 
 }
-
-/* End of file Memcached.php */
-/* Location: ./o2system/libraries/sessiion/drivers/Memcached.php */

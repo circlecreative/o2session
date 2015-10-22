@@ -1,8 +1,8 @@
 <?php
 /**
- * O2System
+ * O2Session
  *
- * An open source application development framework for PHP 5.4 or newer
+ * An open source Session Management Library for PHP 5.4 or newer
  *
  * This content is released under the MIT License (MIT)
  *
@@ -29,52 +29,55 @@
  * @package        O2System
  * @author         Steeven Andrian Salim
  * @copyright      Copyright (c) 2005 - 2014, PT. Lingkar Kreasi (Circle Creative).
- * @license        http://circle-creative.com/products/o2system/license.html
+ * @license        http://o2system.in/features/o2session/license
  * @license        http://opensource.org/licenses/MIT	MIT License
- * @link           http://circle-creative.com
- * @since          Version 2.0
+ * @link           http://o2system.in
  * @filesource
  */
 
 // ------------------------------------------------------------------------
 
-namespace O2System\Libraries\Session\Drivers;
+namespace O2System\Session\Drivers;
 
 // ------------------------------------------------------------------------
 
-use O2System\Core\Loader;
-use O2System\Libraries\Session\Interfaces\Driver;
-use O2System\Libraries\Session\Interfaces\Handler;
+use O2System\Session\Interfaces\Driver;
+use O2System\DB;
 
 /**
- * CodeIgniter Session Database Driver
+ * Session Database Driver
  *
- * @package       CodeIgniter
- * @subpackage    Libraries
+ * Based on CodeIgniter Session Database Driver by Andrey Andreev
+ *
+ * @package       o2session
+ * @subpackage    drivers
  * @category      Sessions
- * @author        Andrey Andreev
- * @link          http://codeigniter.com/user_guide/libraries/sessions.html
+ * @author        Circle Creative Developer Team
+ * @link          http://o2system.in/features/o2session/user-guide/drivers/database.html
  */
 class Database extends Driver implements \SessionHandlerInterface
 {
     /**
-     * DB object
+     * O2System DB Resource
      *
-     * @var    object
+     * @access  protected
+     * @type    object
      */
     protected $_db;
 
     /**
      * Row exists flag
      *
-     * @var    bool
+     * @access  protected
+     * @type    bool
      */
     protected $_row_exists = FALSE;
 
     /**
-     * Lock "driver" flag
+     * DB Driver Platform
      *
-     * @var    string
+     * @access  protected
+     * @type    string
      */
     protected $_platform;
 
@@ -83,34 +86,27 @@ class Database extends Driver implements \SessionHandlerInterface
     /**
      * Class constructor
      *
+     * @uses    O2System\DB()
+     *
      * @param    array $params Configuration parameters
      *
-     * @return    void
+     * @access  public
+     * @throws  \InvalidArgumentException
      */
     public function __construct( &$params )
     {
         parent::__construct( $params );
 
-        $this->_db = Loader::db();
-
-        if( $this->_db->pconnect )
+        if( ! isset( $this->_config[ 'database' ] ) )
         {
-            throw new \Exception( 'Configured database connection is persistent. Aborting.' );
-        }
-        elseif( $this->_db->cache_on )
-        {
-            throw new \Exception( 'Configured database connection has cache enabled. Aborting.' );
+            throw new \InvalidArgumentException( 'Session: No database connection configured.' );
         }
 
-        $db_driver = $this->_db->db_driver . ( empty( $this->_db->sub_db_driver ) ? '' : '_' . $this->_db->sub_db_driver );
-        if( strpos( $db_driver, 'mysql' ) !== FALSE )
-        {
-            $this->_platform = 'mysql';
-        }
-        elseif( in_array( $db_driver, array( 'postgre', 'pdo_pgsql' ), TRUE ) )
-        {
-            $this->_platform = 'postgre';
-        }
+        $DB = new DB();
+
+        $this->_db = $DB->connect( $this->_config[ 'database' ] );
+
+        $this->_platform = strtolower( $this->_db->platform() );
     }
 
     // ------------------------------------------------------------------------
@@ -120,16 +116,15 @@ class Database extends Driver implements \SessionHandlerInterface
      *
      * Initializes the database connection
      *
-     * @param    string $save_path Table name
-     * @param    string $name      Session cookie name, unused
+     * @param   string $save_path Table name
+     * @param   string $name      Session cookie name, unused
      *
-     * @return    bool
+     * @access  public
+     * @return  bool
      */
     public function open( $save_path, $name )
     {
-        return empty( $this->_db->conn_id )
-            ? (bool)$this->_db->db_connect()
-            : TRUE;
+        return $this->_db->is_connected();
     }
 
     // ------------------------------------------------------------------------
@@ -139,9 +134,10 @@ class Database extends Driver implements \SessionHandlerInterface
      *
      * Reads session data and acquires a lock
      *
-     * @param    string $session_id Session ID
+     * @param   string $session_id Session ID
      *
-     * @return    string    Serialized session data
+     * @access  public
+     * @return  string  Serialized session data
      */
     public function read( $session_id )
     {
@@ -192,10 +188,11 @@ class Database extends Driver implements \SessionHandlerInterface
      *
      * Writes (create / update) session data
      *
-     * @param    string $session_id   Session ID
-     * @param    string $session_data Serialized session data
+     * @param   string $session_id   Session ID
+     * @param   string $session_data Serialized session data
      *
-     * @return    bool
+     * @access  public
+     * @return  bool
      */
     public function write( $session_id, $session_data )
     {
@@ -265,7 +262,8 @@ class Database extends Driver implements \SessionHandlerInterface
      *
      * Releases locks
      *
-     * @return    bool
+     * @access  public
+     * @return  bool
      */
     public function close()
     {
@@ -281,9 +279,10 @@ class Database extends Driver implements \SessionHandlerInterface
      *
      * Destroys the current session.
      *
-     * @param    string $session_id Session ID
+     * @param   string $session_id Session ID
      *
-     * @return    bool
+     * @access  public
+     * @return  bool
      */
     public function destroy( $session_id )
     {
@@ -310,9 +309,10 @@ class Database extends Driver implements \SessionHandlerInterface
      *
      * Deletes expired sessions
      *
-     * @param    int $maxlifetime Maximum lifetime of sessions
+     * @param   int $maxlifetime    Maximum lifetime of sessions
      *
-     * @return    bool
+     * @access  public
+     * @return  bool
      */
     public function gc( $maxlifetime )
     {
@@ -326,16 +326,17 @@ class Database extends Driver implements \SessionHandlerInterface
      *
      * Acquires a lock, depending on the underlying platform.
      *
-     * @param    string $session_id Session ID
+     * @param   string $session_id Session ID
      *
-     * @return    bool
+     * @access  public
+     * @return  bool
      */
     protected function _get_lock( $session_id )
     {
         if( $this->_platform === 'mysql' )
         {
             $arg = $session_id . ( $this->_config[ 'session' ][ 'match_ip' ] ? '_' . $_SERVER[ 'REMOTE_ADDR' ] : '' );
-            if( $this->_db->query( "SELECT GET_LOCK('" . $arg . "', 300) AS ci_session_lock" )->row()->ci_session_lock )
+            if( $this->_db->query( "SELECT GET_LOCK('" . $arg . "', 300) AS o2session_lock" )->row()->o2session_lock )
             {
                 $this->_lock = $arg;
 
@@ -367,7 +368,8 @@ class Database extends Driver implements \SessionHandlerInterface
      *
      * Releases a previously acquired lock
      *
-     * @return    bool
+     * @access  public
+     * @return  bool
      */
     protected function _release_lock()
     {
@@ -378,7 +380,7 @@ class Database extends Driver implements \SessionHandlerInterface
 
         if( $this->_platform === 'mysql' )
         {
-            if( $this->_db->query( "SELECT RELEASE_LOCK('" . $this->_lock . "') AS ci_session_lock" )->row()->ci_session_lock )
+            if( $this->_db->query( "SELECT RELEASE_LOCK('" . $this->_lock . "') AS o2session_lock" )->row()->o2session_lock )
             {
                 $this->_lock = FALSE;
 
@@ -402,6 +404,3 @@ class Database extends Driver implements \SessionHandlerInterface
         return parent::_release_lock();
     }
 }
-
-/* End of file Database.php */
-/* Location: ./o2system/libraries/sessiion/drivers/Database.php */
