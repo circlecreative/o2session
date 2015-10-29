@@ -1,5 +1,7 @@
 O2Session
 =====
+[![Latest Stable Version](https://poser.pugx.org/o2system/o2session/v/stable)](https://packagist.org/packages/o2system/o2session) [![Total Downloads](https://poser.pugx.org/o2system/o2session/downloads)](https://packagist.org/packages/o2system/o2session) [![Latest Unstable Version](https://poser.pugx.org/o2system/o2session/v/unstable)](https://packagist.org/packages/o2system/o2session) [![License](https://poser.pugx.org/o2system/o2session/license)](https://packagist.org/packages/o2system/o2session)
+
 [O2Session][3] is an Open Source Session Management Driver Library. 
 Allows different storage engines to be used. 
 All but file-based storage require specific server requirements, and a Fatal Exception will be thrown if server requirements are not met. 
@@ -52,7 +54,7 @@ $foo = $session->userdata('foo');
 $userdata = $session->get_userdata();
 ```
 
-More details at the [Wiki][6]. (Coming Soon)
+More details at the [Wiki][6].
 
 Ideas and Suggestions
 ---------------------
@@ -71,8 +73,10 @@ System Requirements
 
 Credits
 -------
-* Founder and Lead Projects: [Steeven Andrian Salim (steevenz.com)][8]
-* Wiki Writer: Aradea Hind
+* Founder and Lead Projects: [Steeven Andrian Salim (steevenz.com)](http://steevenz.com)
+* Github Pages Designer and Writer: [Teguh Rianto](http://teguhrianto.tk)
+* Wiki Writer: [Steeven Andrian Salim](http://steevenz.com) (EN), Aradea Hind (ID)
+* Special Thanks To: Yudi Primaputra (CTO - PT. YukBisnis Indonesia)
 
 [1]: http://circle-creative.com
 [2]: http://o2system.in
