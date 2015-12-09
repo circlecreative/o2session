@@ -51,339 +51,376 @@ use O2System\Session\Interfaces\Driver;
  * @package       o2session
  * @subpackage    Drivers
  * @category      Sessions
- * @author        Circle Creative Developer Team
+ * @author        O2System Developer Team
  * @link          http://o2system.in/features/o2session/user-guide/drivers/memcached
  */
 class Memcached extends Driver implements \SessionHandlerInterface
 {
-    /**
-     * Key prefix
-     *
-     * @access  protected
-     * @type    string
-     */
-    protected $_key_prefix = 'o2session:';
+	/**
+	 * Key prefix
+	 *
+	 * @access  protected
+	 * @type    string
+	 */
+	protected $_key_prefix = 'o2session:';
 
-    /**
-     * Lock key
-     *
-     * @access  protected
-     * @type    string
-     */
-    protected $_lock_key;
+	/**
+	 * Lock key
+	 *
+	 * @access  protected
+	 * @type    string
+	 */
+	protected $_lock_key;
 
-    // ------------------------------------------------------------------------
+	// ------------------------------------------------------------------------
 
-    /**
-     * Class constructor
-     *
-     * @param   array   $params Configuration parameters
-     *
-     * @access  public
-     * @throws  \InvalidArgumentException
-     */
-    public function __construct( &$params )
-    {
-        parent::__construct( $params );
+	/**
+	 * Class constructor
+	 *
+	 * @param   array $params Configuration parameters
+	 *
+	 * @access  public
+	 * @throws  \InvalidArgumentException
+	 */
+	public function __construct( &$params )
+	{
+		if ( empty( $params[ 'storage' ][ 'save_path' ] ) )
+		{
+			throw new \InvalidArgumentException( 'Session: No Memcached save path configured.' );
+		}
+		elseif ( is_string( $params[ 'storage' ][ 'save_path' ] ) AND strpos( $params[ 'storage' ][ 'save_path' ], '://' ) !== FALSE )
+		{
+			/**
+			 * Parse the URL from the DSN string
+			 * parameters or as a data source name in the first
+			 * parameter. DSNs must have this prototype:
+			 * $dsn = 'memcached://hostname:port/?weight=1';
+			 */
+			if ( ( $dsn = @parse_url( $params[ 'storage' ][ 'save_path' ] ) ) === FALSE )
+			{
+				throw new \InvalidArgumentException( 'Session: Invalid Memcached save path format: ' . $params[ 'storage' ][ 'save_path' ] );
+			}
 
-        if( empty( $this->_config[ 'storage' ][ 'save_path' ] ) )
-        {
-            throw new \InvalidArgumentException( 'Session: No Memcached save path configured.' );
-        }
+			$params[ 'storage' ][ 'save_path' ] = array(
+				'host' => isset( $dsn[ 'username' ] ) ? rawurldecode( $dsn[ 'username' ] ) : '',
+				'port' => isset( $dsn[ 'password' ] ) ? rawurldecode( $dsn[ 'password' ] ) : '',
+			);
 
-        if( $this->_config[ 'storage' ][ 'match_ip' ] === TRUE )
-        {
-            $this->_key_prefix .= $_SERVER[ 'REMOTE_ADDR' ] . ':';
-        }
-    }
+			// Were additional config items set?
+			if ( isset( $dsn[ 'query' ] ) )
+			{
+				parse_str( $dsn[ 'query' ], $extra );
 
-    // ------------------------------------------------------------------------
+				foreach ( $extra as $key => $value )
+				{
+					if ( is_string( $value ) AND in_array( strtoupper( $value ), array( 'TRUE', 'FALSE', 'NULL' ) ) )
+					{
+						$value = var_export( $value, TRUE );
+					}
 
-    /**
-     * Open
-     *
-     * Sanitizes save_path and initializes connections.
-     *
-     * @uses    \Memcached
-     *
-     * @param   string  $save_path  Server path(s)
-     * @param   string  $name       Session cookie name, unused
-     *
-     * @access  public
-     * @return  bool
-     */
-    public function open( $save_path, $name )
-    {
-        $this->_handle = new \Memcached();
-        $this->_handle->setOption( \Memcached::OPT_BINARY_PROTOCOL, TRUE ); // required for touch() usage
-        $server_list = array();
-        foreach( $this->_handle->getServerList() as $server )
-        {
-            $server_list[ ] = $server[ 'host' ] . ':' . $server[ 'port' ];
-        }
+					$params[ 'storage' ][ 'save_path' ][ $key ] = $value;
+				}
+			}
+		}
 
-        if( ! preg_match_all( '#,?([^,:]+)\:(\d{1,5})(?:\:(\d+))?#', $this->_config[ 'storage' ][ 'save_path' ], $matches, PREG_SET_ORDER ) )
-        {
-            $this->_handle = NULL;
-            return FALSE;
-        }
+		if ( ! isset( $params[ 'storage' ][ 'save_path' ][ 'host' ] ) )
+		{
+			throw new \InvalidArgumentException( 'Session: Invalid Memcached save path format: ' . $params[ 'storage' ][ 'save_path' ] );
+		}
 
-        foreach( $matches as $match )
-        {
-            // If Memcached already has this server (or if the port is invalid), skip it
-            if( in_array( $match[ 1 ] . ':' . $match[ 2 ], $server_list, TRUE ) )
-            {
-                continue;
-            }
+		parent::__construct( $params );
 
-            if( $this->_handle->addServer( $match[ 1 ], $match[ 2 ], isset( $match[ 3 ] ) ? $match[ 3 ] : 0 ) )
-            {
-                $server_list[ ] = $match[ 1 ] . ':' . $match[ 2 ];
-            }
-        }
+		if ( empty( $this->_config[ 'storage' ][ 'save_path' ] ) )
+		{
+			throw new \InvalidArgumentException( 'Session: No Memcached save path configured.' );
+		}
 
-        if( empty( $server_list ) )
-        {
-            return FALSE;
-        }
+		if ( $this->_config[ 'storage' ][ 'match_ip' ] === TRUE )
+		{
+			$this->_key_prefix .= $_SERVER[ 'REMOTE_ADDR' ] . ':';
+		}
+	}
 
-        return TRUE;
-    }
+	// ------------------------------------------------------------------------
 
-    // ------------------------------------------------------------------------
+	/**
+	 * Open
+	 *
+	 * Sanitizes save_path and initializes connections.
+	 *
+	 * @uses    \Memcached
+	 *
+	 * @param   string $save_path Server path(s)
+	 * @param   string $name      Session cookie name, unused
+	 *
+	 * @access  public
+	 * @return  bool
+	 */
+	public function open( $save_path, $name )
+	{
+		if ( class_exists( 'Memcached', FALSE ) )
+		{
+			$this->_handle = new \Memcached();
+		}
+		elseif ( class_exists( 'Memcache', FALSE ) )
+		{
+			$this->_handle = new \Memcache();
+		}
+		else
+		{
+			return FALSE;
+		}
 
-    /**
-     * Read
-     *
-     * Reads session data and acquires a lock
-     *
-     * @param   string  $session_id Session ID
-     *
-     * @access  public
-     * @return  string  Serialized session data
-     */
-    public function read( $session_id )
-    {
-        if( isset( $this->_handle ) && $this->_get_lock( $session_id ) )
-        {
-            // Needed by write() to detect session_regenerate_id() calls
-            $this->_session_id = $session_id;
+		if ( get_class( $this->_handle ) === 'Memcache' )
+		{
+			// Third parameter is persistance and defaults to TRUE.
+			$this->_handle->addServer(
+				$this->_config[ 'save_path' ][ 'host' ],
+				$this->_config[ 'save_path' ][ 'port' ],
+				TRUE,
+				$this->_config[ 'save_path' ][ 'weight' ]
+			);
+		}
+		else
+		{
+			$this->_handle->addServer(
+				$this->_config[ 'save_path' ][ 'host' ],
+				$this->_config[ 'save_path' ][ 'port' ],
+				$this->_config[ 'save_path' ][ 'weight' ]
+			);
+		}
 
-            $session_data = (string)$this->_handle->get( $this->_key_prefix . $session_id );
-            $this->_fingerprint = md5( $session_data );
+		$this->_handle->setOption( \Memcached::OPT_BINARY_PROTOCOL, TRUE ); // required for touch() usage
 
-            return $session_data;
-        }
+		return TRUE;
+	}
 
-        return FALSE;
-    }
+	// ------------------------------------------------------------------------
 
-    // ------------------------------------------------------------------------
+	/**
+	 * Read
+	 *
+	 * Reads session data and acquires a lock
+	 *
+	 * @param   string $session_id Session ID
+	 *
+	 * @access  public
+	 * @return  string  Serialized session data
+	 */
+	public function read( $session_id )
+	{
+		if ( isset( $this->_handle ) && $this->_get_lock( $session_id ) )
+		{
+			// Needed by write() to detect session_regenerate_id() calls
+			$this->_session_id = $session_id;
 
-    /**
-     * Write
-     *
-     * Writes (create / update) session data
-     *
-     * @param   string  $session_id     Session ID
-     * @param   string  $session_data   Serialized session data
-     *
-     * @access  public
-     * @return  bool
-     */
-    public function write( $session_id, $session_data )
-    {
-        if( ! isset( $this->_handle ) )
-        {
-            return FALSE;
-        }
-        // Was the ID regenerated?
-        elseif( $session_id !== $this->_session_id )
-        {
-            if( ! $this->_release_lock() OR ! $this->_get_lock( $session_id ) )
-            {
-                return FALSE;
-            }
+			$session_data = (string) $this->_handle->get( $this->_key_prefix . $session_id );
+			$this->_fingerprint = md5( $session_data );
 
-            $this->_fingerprint = md5( '' );
-            $this->_session_id = $session_id;
-        }
+			return $session_data;
+		}
 
-        if( isset( $this->_lock_key ) )
-        {
-            $this->_handle->replace( $this->_lock_key, time(), 300 );
-            if( $this->_fingerprint !== ( $fingerprint = md5( $session_data ) ) )
-            {
-<<<<<<< HEAD
-                if( $this->_handle->set( $this->_key_prefix . $session_id, $session_data, $this->_config[ 'storage' ][ 'lifetime' ] ) )
-=======
-                if( $this->_handle->set( $this->_key_prefix . $session_id, $session_data, $this->_config[ 'session' ][ 'lifetime' ] ) )
->>>>>>> origin/master
-                {
-                    $this->_fingerprint = $fingerprint;
+		return FALSE;
+	}
 
-                    return TRUE;
-                }
+	// ------------------------------------------------------------------------
 
-                return FALSE;
-            }
+	/**
+	 * Write
+	 *
+	 * Writes (create / update) session data
+	 *
+	 * @param   string $session_id   Session ID
+	 * @param   string $session_data Serialized session data
+	 *
+	 * @access  public
+	 * @return  bool
+	 */
+	public function write( $session_id, $session_data )
+	{
+		if ( ! isset( $this->_handle ) )
+		{
+			return FALSE;
+		}
+		// Was the ID regenerated?
+		elseif ( $session_id !== $this->_session_id )
+		{
+			if ( ! $this->_release_lock() OR ! $this->_get_lock( $session_id ) )
+			{
+				return FALSE;
+			}
 
-<<<<<<< HEAD
-            return $this->_handle->touch( $this->_key_prefix . $session_id, $this->_config[ 'storage' ][ 'lifetime' ] );
-=======
-            return $this->_handle->touch( $this->_key_prefix . $session_id, $this->_config[ 'session' ][ 'lifetime' ] );
->>>>>>> origin/master
-        }
+			$this->_fingerprint = md5( '' );
+			$this->_session_id = $session_id;
+		}
 
-        return FALSE;
-    }
+		if ( isset( $this->_lock_key ) )
+		{
+			$this->_handle->replace( $this->_lock_key, time(), 300 );
+			if ( $this->_fingerprint !== ( $fingerprint = md5( $session_data ) ) )
+			{
+				if ( $this->_handle->set( $this->_key_prefix . $session_id, $session_data, $this->_config[ 'storage' ][ 'lifetime' ] ) )
+				{
+					$this->_fingerprint = $fingerprint;
 
-    // ------------------------------------------------------------------------
+					return TRUE;
+				}
 
-    /**
-     * Close
-     *
-     * Releases locks and closes connection.
-     *
-     * @access  public
-     * @return  bool
-     */
-    public function close()
-    {
-        if( isset( $this->_handle ) )
-        {
-            isset( $this->_lock_key ) && $this->_handle->delete( $this->_lock_key );
-            if( ! $this->_handle->quit() )
-            {
-                return FALSE;
-            }
+				return FALSE;
+			}
 
-            $this->_handle = NULL;
+			return $this->_handle->touch( $this->_key_prefix . $session_id, $this->_config[ 'storage' ][ 'lifetime' ] );
+		}
 
-            return TRUE;
-        }
+		return FALSE;
+	}
 
-        return FALSE;
-    }
+	// ------------------------------------------------------------------------
 
-    // ------------------------------------------------------------------------
+	/**
+	 * Close
+	 *
+	 * Releases locks and closes connection.
+	 *
+	 * @access  public
+	 * @return  bool
+	 */
+	public function close()
+	{
+		if ( isset( $this->_handle ) )
+		{
+			isset( $this->_lock_key ) && $this->_handle->delete( $this->_lock_key );
+			if ( ! $this->_handle->quit() )
+			{
+				return FALSE;
+			}
 
-    /**
-     * Destroy
-     *
-     * Destroys the current session.
-     *
-     * @param   string  $session_id Session ID
-     *
-     * @access  public
-     * @return  bool
-     */
-    public function destroy( $session_id )
-    {
-        if( isset( $this->_handle, $this->_lock_key ) )
-        {
-            $this->_handle->delete( $this->_key_prefix . $session_id );
+			$this->_handle = NULL;
 
-            return $this->_cookie_destroy();
-        }
+			return TRUE;
+		}
 
-        return FALSE;
-    }
+		return FALSE;
+	}
 
-    // ------------------------------------------------------------------------
+	// ------------------------------------------------------------------------
 
-    /**
-     * Garbage Collector
-     *
-     * Deletes expired sessions
-     *
-     * @param   int $maxlifetime    Maximum lifetime of sessions
-     *
-     * @access  public
-     * @return  bool
-     */
-    public function gc( $maxlifetime )
-    {
-        // Not necessary, Memcached takes care of that.
-        return TRUE;
-    }
+	/**
+	 * Destroy
+	 *
+	 * Destroys the current session.
+	 *
+	 * @param   string $session_id Session ID
+	 *
+	 * @access  public
+	 * @return  bool
+	 */
+	public function destroy( $session_id )
+	{
+		if ( isset( $this->_handle, $this->_lock_key ) )
+		{
+			$this->_handle->delete( $this->_key_prefix . $session_id );
 
-    // ------------------------------------------------------------------------
+			return $this->_cookie_destroy();
+		}
 
-    /**
-     * Get lock
-     *
-     * Acquires an (emulated) lock.
-     *
-     * @param   string  $session_id Session ID
-     *
-     * @access  public
-     * @return  bool
-     */
-    protected function _get_lock( $session_id )
-    {
-        if( isset( $this->_lock_key ) )
-        {
-            return $this->_handle->replace( $this->_lock_key, time(), 300 );
-        }
+		return FALSE;
+	}
 
-        // 30 attempts to obtain a lock, in case another request already has it
-        $lock_key = $this->_key_prefix . $session_id . ':lock';
-        $attempt = 0;
-        do
-        {
-            if( $this->_handle->get( $lock_key ) )
-            {
-                sleep( 1 );
-                continue;
-            }
+	// ------------------------------------------------------------------------
 
-            if( ! $this->_handle->set( $lock_key, time(), 300 ) )
-            {
-               return FALSE;
-            }
+	/**
+	 * Garbage Collector
+	 *
+	 * Deletes expired sessions
+	 *
+	 * @param   int $maxlifetime Maximum lifetime of sessions
+	 *
+	 * @access  public
+	 * @return  bool
+	 */
+	public function gc( $maxlifetime )
+	{
+		// Not necessary, Memcached takes care of that.
+		return TRUE;
+	}
 
-            $this->_lock_key = $lock_key;
-            break;
-        }
-        while( $attempt++ < 30 );
+	// ------------------------------------------------------------------------
 
-        if( $attempt === 30 )
-        {
-            return FALSE;
-        }
+	/**
+	 * Get lock
+	 *
+	 * Acquires an (emulated) lock.
+	 *
+	 * @param   string $session_id Session ID
+	 *
+	 * @access  public
+	 * @return  bool
+	 */
+	protected function _get_lock( $session_id )
+	{
+		if ( isset( $this->_lock_key ) )
+		{
+			return $this->_handle->replace( $this->_lock_key, time(), 300 );
+		}
 
-        $this->_lock = TRUE;
+		// 30 attempts to obtain a lock, in case another request already has it
+		$lock_key = $this->_key_prefix . $session_id . ':lock';
+		$attempt = 0;
+		do
+		{
+			if ( $this->_handle->get( $lock_key ) )
+			{
+				sleep( 1 );
+				continue;
+			}
 
-        return TRUE;
-    }
+			if ( ! $this->_handle->set( $lock_key, time(), 300 ) )
+			{
+				return FALSE;
+			}
 
-    // ------------------------------------------------------------------------
+			$this->_lock_key = $lock_key;
+			break;
+		}
+		while ( $attempt++ < 30 );
 
-    /**
-     * Release lock
-     *
-     * Releases a previously acquired lock
-     *
-     * @uses    \Memcached
-     *
-     * @access  protected
-     * @return  bool
-     */
-    protected function _release_lock()
-    {
-        if( isset( $this->_handle, $this->_lock_key ) && $this->_lock )
-        {
-            if( ! $this->_handle->delete( $this->_lock_key ) && $this->_handle->getResultCode() !== \Memcached::RES_NOTFOUND )
-            {
-                return FALSE;
-            }
+		if ( $attempt === 30 )
+		{
+			return FALSE;
+		}
 
-            $this->_lock_key = NULL;
-            $this->_lock = FALSE;
-        }
+		$this->_lock = TRUE;
 
-        return TRUE;
-    }
+		return TRUE;
+	}
+
+	// ------------------------------------------------------------------------
+
+	/**
+	 * Release lock
+	 *
+	 * Releases a previously acquired lock
+	 *
+	 * @uses    \Memcached
+	 *
+	 * @access  protected
+	 * @return  bool
+	 */
+	protected function _release_lock()
+	{
+		if ( isset( $this->_handle, $this->_lock_key ) && $this->_lock )
+		{
+			if ( ! $this->_handle->delete( $this->_lock_key ) && $this->_handle->getResultCode() !== \Memcached::RES_NOTFOUND )
+			{
+				return FALSE;
+			}
+
+			$this->_lock_key = NULL;
+			$this->_lock = FALSE;
+		}
+
+		return TRUE;
+	}
 
 }
