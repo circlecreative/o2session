@@ -53,367 +53,372 @@ use O2System\Session\Interfaces\Handler;
  * @package       o2session
  * @subpackage    Libraries
  * @category      Sessions
- * @author        Circle Creative Developer Team
+ * @author        O2System Developer Team
  * @link          http://o2system.in/features/o2session/user-guide/drivers/redis
  */
 class Redis extends Driver implements \SessionHandlerInterface
 {
-    /**
-     * Key prefix
-     *
-     * @access  protected
-     * @type    string
-     */
-    protected $_key_prefix = 'o2session:';
+	/**
+	 * Key prefix
+	 *
+	 * @access  protected
+	 * @type    string
+	 */
+	protected $_key_prefix = 'o2session:';
 
-    /**
-     * Lock key
-     *
-     * @access  protected
-     * @type    string
-     */
-    protected $_lock_key;
+	/**
+	 * Lock key
+	 *
+	 * @access  protected
+	 * @type    string
+	 */
+	protected $_lock_key;
 
-    // ------------------------------------------------------------------------
+	// ------------------------------------------------------------------------
 
-    /**
-     * Class constructor
-     *
-     * @param    array $params Configuration parameters
-     *
-     * @access  public
-     * @throws  \InvalidArgumentException
-     */
-    public function __construct( &$params )
-    {
-        parent::__construct( $params );
+	/**
+	 * Class constructor
+	 *
+	 * @param    array $params Configuration parameters
+	 *
+	 * @access  public
+	 * @throws  \InvalidArgumentException
+	 */
+	public function __construct( &$params )
+	{
+		if ( empty( $params[ 'storage' ][ 'save_path' ] ) )
+		{
+			throw new \InvalidArgumentException( 'Session: No Redis save path configured.' );
+		}
+		elseif ( is_string( $params[ 'storage' ][ 'save_path' ] ) AND strpos( $params[ 'storage' ][ 'save_path' ], '://' ) !== FALSE )
+		{
+			/**
+			 * Parse the URL from the DSN string
+			 * parameters or as a data source name in the first
+			 * parameter. DSNs must have this prototype:
+			 * $dsn = 'tcp://password@hostname:port/?timeout=5';
+			 */
+			if ( ( $dsn = @parse_url( $params[ 'storage' ][ 'save_path' ] ) ) === FALSE )
+			{
+				throw new \InvalidArgumentException( 'Session: Invalid Redis save path format: ' . $params[ 'storage' ][ 'save_path' ] );
+			}
 
-        if( empty( $this->_config[ 'storage' ][ 'save_path' ] ) )
-        {
-            throw new \InvalidArgumentException( 'Session: No Redis save path configured.' );
-        }
-        elseif( preg_match( '#(?:tcp://)?([^:?]+)(?:\:(\d+))?(\?.+)?#', $this->_config[ 'storage' ][ 'save_path' ], $matches ) )
-        {
-            isset( $matches[ 3 ] ) OR $matches[ 3 ] = ''; // Just to avoid undefined index notices below
-            $this->_config[ 'storage' ][ 'save_path' ] = array(
-                'host'     => $matches[ 1 ],
-                'port'     => empty( $matches[ 2 ] ) ? NULL : $matches[ 2 ],
-                'password' => preg_match( '#auth=([^\s&]+)#', $matches[ 3 ], $match ) ? $match[ 1 ] : NULL,
-                'database' => preg_match( '#database=(\d+)#', $matches[ 3 ], $match ) ? (int)$match[ 1 ] : NULL,
-                'timeout'  => preg_match( '#timeout=(\d+\.\d+)#', $matches[ 3 ], $match ) ? (float)$match[ 1 ] : NULL
-            );
+			$params[ 'storage' ][ 'save_path' ] = array(
+				'socket'   => isset( $dsn[ 'scheme' ] ) ? rawurldecode( $dsn[ 'scheme' ] ) : '',
+				'password' => isset( $dsn[ 'username' ] ) ? rawurldecode( $dsn[ 'username' ] ) : '',
+				'host'     => isset( $dsn[ 'hostname' ] ) ? rawurldecode( $dsn[ 'hostname' ] ) : '',
+				'port'     => isset( $dsn[ 'port' ] ) ? rawurldecode( $dsn[ 'port' ] ) : '',
+			);
 
-            preg_match( '#prefix=([^\s&]+)#', $matches[ 3 ], $match ) && $this->_key_prefix = $match[ 1 ];
-        }
-        else
-        {
-<<<<<<< HEAD
-            throw new \InvalidArgumentException( 'Session: Invalid Redis save path format: ' . $this->_config[ 'storage' ][ 'save_path' ] );
-=======
-            throw new \InvalidArgumentException( 'Session: Invalid Redis save path format: ' . $this->_config[ 'session' ][ 'save_path' ] );
->>>>>>> origin/master
-        }
+			// Were additional config items set?
+			if ( isset( $dsn[ 'query' ] ) )
+			{
+				parse_str( $dsn[ 'query' ], $extra );
 
-        if( $this->_config[ 'storage' ][ 'match_ip' ] === TRUE )
-        {
-            $this->_key_prefix .= $_SERVER[ 'REMOTE_ADDR' ] . ':';
-        }
-    }
+				foreach ( $extra as $key => $value )
+				{
+					if ( is_string( $value ) AND in_array( strtoupper( $value ), array( 'TRUE', 'FALSE', 'NULL' ) ) )
+					{
+						$value = var_export( $value, TRUE );
+					}
 
-    // ------------------------------------------------------------------------
+					$params[ 'storage' ][ 'save_path' ][ $key ] = $value;
+				}
+			}
+			[ 1 ];
+		}
 
-    /**
-     * Open
-     *
-     * Sanitizes save_path and initializes connection.
-     *
-     * @param   string  $save_path  Server path
-     * @param   string  $name       Session cookie name, unused
-     *
-     * @access  public
-     * @return  bool
-     * @throws  \RuntimeException
-     */
-    public function open( $save_path, $name )
-    {
-        if( empty( $this->_config[ 'storage' ][ 'save_path' ] ) )
-        {
-            return FALSE;
-        }
+		if ( ! isset( $params[ 'storage' ][ 'save_path' ][ 'host' ] ) )
+		{
+			throw new \InvalidArgumentException( 'Session: Invalid Redis save path format: ' . $params[ 'storage' ][ 'save_path' ] );
+		}
 
-        $redis = new \Redis();
+		parent::__construct( $params );
 
-<<<<<<< HEAD
-        if( ! $redis->connect( $this->_config[ 'storage' ][ 'save_path' ][ 'host' ], $this->_config[ 'storage' ][ 'save_path' ][ 'port' ], $this->_config[ 'storage' ][ 'save_path' ][ 'timeout' ] ) )
-=======
-        if( ! $redis->connect( $this->_config[ 'session' ][ 'save_path' ][ 'host' ], $this->_config[ 'session' ][ 'save_path' ][ 'port' ], $this->_config[ 'session' ][ 'save_path' ][ 'timeout' ] ) )
->>>>>>> origin/master
-        {
-            throw new \RuntimeException( 'Session: Unable to connect to Redis with the configured settings.' );
-        }
-        elseif( isset( $this->_config[ 'storage' ][ 'save_path' ][ 'password' ] ) && ! $redis->auth( $this->_config[ 'storage' ][ 'save_path' ][ 'password' ] ) )
-        {
-            throw new \RuntimeException( 'Session: Unable to authenticate to Redis instance.' );
-        }
-        elseif( isset( $this->_config[ 'storage' ][ 'save_path' ][ 'database' ] ) && ! $redis->select( $this->_config[ 'storage' ][ 'save_path' ][ 'database' ] ) )
-        {
-<<<<<<< HEAD
-            throw new \RuntimeException( 'Session: Unable to select Redis database with index ' . $this->_config[ 'storage' ][ 'save_path' ][ 'database' ] );
-=======
-            throw new \RuntimeException( 'Session: Unable to select Redis database with index ' . $this->_config[ 'session' ][ 'save_path' ][ 'database' ] );
->>>>>>> origin/master
-        }
-        else
-        {
-            $this->_handle = $redis;
+		if ( $this->_config[ 'storage' ][ 'match_ip' ] === TRUE )
+		{
+			$this->_key_prefix .= $_SERVER[ 'REMOTE_ADDR' ] . ':';
+		}
+	}
 
-            return TRUE;
-        }
+	// ------------------------------------------------------------------------
 
-        return FALSE;
-    }
+	/**
+	 * Open
+	 *
+	 * Sanitizes save_path and initializes connection.
+	 *
+	 * @param   string $save_path Server path
+	 * @param   string $name      Session cookie name, unused
+	 *
+	 * @access  public
+	 * @return  bool
+	 * @throws  \RuntimeException
+	 */
+	public function open( $save_path, $name )
+	{
+		if ( empty( $this->_config[ 'storage' ][ 'save_path' ] ) )
+		{
+			return FALSE;
+		}
 
-    // ------------------------------------------------------------------------
+		$redis = new \Redis();
 
-    /**
-     * Read
-     *
-     * Reads session data and acquires a lock
-     *
-     * @param   string  $session_id Session ID
-     *
-     * @access  public
-     * @return  string  Serialized session data
-     */
-    public function read( $session_id )
-    {
-        if( isset( $this->_handle ) && $this->_get_lock( $session_id ) )
-        {
-            // Needed by write() to detect session_regenerate_id() calls
-            $this->_session_id = $session_id;
+		if ( ! $redis->connect( $this->_config[ 'storage' ][ 'save_path' ][ 'host' ], $this->_config[ 'storage' ][ 'save_path' ][ 'port' ], $this->_config[ 'storage' ][ 'save_path' ][ 'timeout' ] ) )
+		{
+			throw new \RuntimeException( 'Session: Unable to connect to Redis with the configured settings.' );
+		}
+		elseif ( isset( $this->_config[ 'storage' ][ 'save_path' ][ 'password' ] ) && ! $redis->auth( $this->_config[ 'storage' ][ 'save_path' ][ 'password' ] ) )
+		{
+			throw new \RuntimeException( 'Session: Unable to authenticate to Redis instance.' );
+		}
+		elseif ( isset( $this->_config[ 'storage' ][ 'save_path' ][ 'database' ] ) && ! $redis->select( $this->_config[ 'storage' ][ 'save_path' ][ 'database' ] ) )
+		{
+			throw new \RuntimeException( 'Session: Unable to select Redis database with index ' . $this->_config[ 'storage' ][ 'save_path' ][ 'database' ] );
+		}
+		else
+		{
+			$this->_handle = $redis;
 
-            $session_data = (string)$this->_handle->get( $this->_key_prefix . $session_id );
-            $this->_fingerprint = md5( $session_data );
+			return TRUE;
+		}
 
-            return $session_data;
-        }
+		return FALSE;
+	}
 
-        return FALSE;
-    }
+	// ------------------------------------------------------------------------
 
-    // ------------------------------------------------------------------------
+	/**
+	 * Read
+	 *
+	 * Reads session data and acquires a lock
+	 *
+	 * @param   string $session_id Session ID
+	 *
+	 * @access  public
+	 * @return  string  Serialized session data
+	 */
+	public function read( $session_id )
+	{
+		if ( isset( $this->_handle ) && $this->_get_lock( $session_id ) )
+		{
+			// Needed by write() to detect session_regenerate_id() calls
+			$this->_session_id = $session_id;
 
-    /**
-     * Write
-     *
-     * Writes (create / update) session data
-     *
-     * @param   string  $session_id     Session ID
-     * @param   string  $session_data   Serialized session data
-     *
-     * @access  public
-     * @return  bool
-     */
-    public function write( $session_id, $session_data )
-    {
-        if( ! isset( $this->_handle ) )
-        {
-            return FALSE;
-        }
-        // Was the ID regenerated?
-        elseif( $session_id !== $this->_session_id )
-        {
-            if( ! $this->_release_lock() OR ! $this->_get_lock( $session_id ) )
-            {
-                return FALSE;
-            }
+			$session_data = (string) $this->_handle->get( $this->_key_prefix . $session_id );
+			$this->_fingerprint = md5( $session_data );
 
-            $this->_fingerprint = md5( '' );
-            $this->_session_id = $session_id;
-        }
+			return $session_data;
+		}
 
-        if( isset( $this->_lock_key ) )
-        {
-            $this->_handle->setTimeout( $this->_lock_key, 300 );
-            if( $this->_fingerprint !== ( $fingerprint = md5( $session_data ) ) )
-            {
-<<<<<<< HEAD
-                if( $this->_handle->set( $this->_key_prefix . $session_id, $session_data, $this->_config[ 'storage' ][ 'lifetime' ] ) )
-=======
-                if( $this->_handle->set( $this->_key_prefix . $session_id, $session_data, $this->_config[ 'session' ][ 'lifetime' ] ) )
->>>>>>> origin/master
-                {
-                    $this->_fingerprint = $fingerprint;
+		return FALSE;
+	}
 
-                    return TRUE;
-                }
+	// ------------------------------------------------------------------------
 
-                return FALSE;
-            }
+	/**
+	 * Write
+	 *
+	 * Writes (create / update) session data
+	 *
+	 * @param   string $session_id   Session ID
+	 * @param   string $session_data Serialized session data
+	 *
+	 * @access  public
+	 * @return  bool
+	 */
+	public function write( $session_id, $session_data )
+	{
+		if ( ! isset( $this->_handle ) )
+		{
+			return FALSE;
+		}
+		// Was the ID regenerated?
+		elseif ( $session_id !== $this->_session_id )
+		{
+			if ( ! $this->_release_lock() OR ! $this->_get_lock( $session_id ) )
+			{
+				return FALSE;
+			}
 
-<<<<<<< HEAD
-            return $this->_handle->setTimeout( $this->_key_prefix . $session_id, $this->_config[ 'storage' ][ 'lifetime' ] );
-=======
-            return $this->_handle->setTimeout( $this->_key_prefix . $session_id, $this->_config[ 'session' ][ 'lifetime' ] );
->>>>>>> origin/master
-        }
+			$this->_fingerprint = md5( '' );
+			$this->_session_id = $session_id;
+		}
 
-        return FALSE;
-    }
+		if ( isset( $this->_lock_key ) )
+		{
+			$this->_handle->setTimeout( $this->_lock_key, 300 );
+			if ( $this->_fingerprint !== ( $fingerprint = md5( $session_data ) ) )
+			{
+				if ( $this->_handle->set( $this->_key_prefix . $session_id, $session_data, $this->_config[ 'storage' ][ 'lifetime' ] ) )
+				{
+					$this->_fingerprint = $fingerprint;
 
-    // ------------------------------------------------------------------------
+					return TRUE;
+				}
 
-    /**
-     * Close
-     *
-     * Releases locks and closes connection.
-     *
-     * @access  public
-     * @return  bool
-     * @throws  \RuntimeException
-     */
-    public function close()
-    {
-        if( isset( $this->_handle ) )
-        {
-            try
-            {
-                if( $this->_handle->ping() === '+PONG' )
-                {
-                    isset( $this->_lock_key ) && $this->_handle->delete( $this->_lock_key );
-                    if( ! $this->_handle->close() )
-                    {
-                        return FALSE;
-                    }
-                }
-            }
-            catch( \RedisException $e )
-            {
-                throw new \RuntimeException( 'Session: Got RedisException on close(): ' . $e->getMessage() );
-            }
+				return FALSE;
+			}
 
-            $this->_handle = NULL;
+			return $this->_handle->setTimeout( $this->_key_prefix . $session_id, $this->_config[ 'storage' ][ 'lifetime' ] );
+		}
 
-            return TRUE;
-        }
+		return FALSE;
+	}
 
-        return TRUE;
-    }
+	// ------------------------------------------------------------------------
 
-    // ------------------------------------------------------------------------
+	/**
+	 * Close
+	 *
+	 * Releases locks and closes connection.
+	 *
+	 * @access  public
+	 * @return  bool
+	 * @throws  \RuntimeException
+	 */
+	public function close()
+	{
+		if ( isset( $this->_handle ) )
+		{
+			try
+			{
+				if ( $this->_handle->ping() === '+PONG' )
+				{
+					isset( $this->_lock_key ) && $this->_handle->delete( $this->_lock_key );
+					if ( ! $this->_handle->close() )
+					{
+						return FALSE;
+					}
+				}
+			}
+			catch ( \RedisException $e )
+			{
+				throw new \RuntimeException( 'Session: Got RedisException on close(): ' . $e->getMessage() );
+			}
 
-    /**
-     * Destroy
-     *
-     * Destroys the current session.
-     *
-     * @param   string  $session_id Session ID
-     *
-     * @access  public
-     * @return  bool
-     */
-    public function destroy( $session_id )
-    {
-        if( isset( $this->_handle, $this->_lock_key ) )
-        {
-            return $this->_cookie_destroy();
-        }
+			$this->_handle = NULL;
 
-        return FALSE;
-    }
+			return TRUE;
+		}
 
-    // ------------------------------------------------------------------------
+		return TRUE;
+	}
 
-    /**
-     * Garbage Collector
-     *
-     * Deletes expired sessions
-     *
-     * @param   int $maxlifetime    Maximum lifetime of sessions
-     *
-     * @access  public
-     * @return  bool
-     */
-    public function gc( $maxlifetime )
-    {
-        // Not necessary, Redis takes care of that.
-        return TRUE;
-    }
+	// ------------------------------------------------------------------------
 
-    // ------------------------------------------------------------------------
+	/**
+	 * Destroy
+	 *
+	 * Destroys the current session.
+	 *
+	 * @param   string $session_id Session ID
+	 *
+	 * @access  public
+	 * @return  bool
+	 */
+	public function destroy( $session_id )
+	{
+		if ( isset( $this->_handle, $this->_lock_key ) )
+		{
+			return $this->_cookie_destroy();
+		}
 
-    /**
-     * Get lock
-     *
-     * Acquires an (emulated) lock.
-     *
-     * @param   string  $session_id Session ID
-     *
-     * @access  protected
-     * @return  bool
-     */
-    protected function _get_lock( $session_id )
-    {
-        if( isset( $this->_lock_key ) )
-        {
-            return $this->_handle->setTimeout( $this->_lock_key, 300 );
-        }
+		return FALSE;
+	}
 
-        // 30 attempts to obtain a lock, in case another request already has it
-        $lock_key = $this->_key_prefix . $session_id . ':lock';
-        $attempt = 0;
-        do
-        {
-            if( ( $ttl = $this->_handle->ttl( $lock_key ) ) > 0 )
-            {
-                sleep( 1 );
-                continue;
-            }
+	// ------------------------------------------------------------------------
 
-            if( ! $this->_handle->setex( $lock_key, 300, time() ) )
-            {
-                return FALSE;
-            }
+	/**
+	 * Garbage Collector
+	 *
+	 * Deletes expired sessions
+	 *
+	 * @param   int $maxlifetime Maximum lifetime of sessions
+	 *
+	 * @access  public
+	 * @return  bool
+	 */
+	public function gc( $maxlifetime )
+	{
+		// Not necessary, Redis takes care of that.
+		return TRUE;
+	}
 
-            $this->_lock_key = $lock_key;
-            break;
-        }
-        while( $attempt++ < 30 );
+	// ------------------------------------------------------------------------
 
-        if( $attempt === 30 )
-        {
-            return FALSE;
-        }
+	/**
+	 * Get lock
+	 *
+	 * Acquires an (emulated) lock.
+	 *
+	 * @param   string $session_id Session ID
+	 *
+	 * @access  protected
+	 * @return  bool
+	 */
+	protected function _get_lock( $session_id )
+	{
+		if ( isset( $this->_lock_key ) )
+		{
+			return $this->_handle->setTimeout( $this->_lock_key, 300 );
+		}
 
-        $this->_lock = TRUE;
+		// 30 attempts to obtain a lock, in case another request already has it
+		$lock_key = $this->_key_prefix . $session_id . ':lock';
+		$attempt = 0;
+		do
+		{
+			if ( ( $ttl = $this->_handle->ttl( $lock_key ) ) > 0 )
+			{
+				sleep( 1 );
+				continue;
+			}
 
-        return TRUE;
-    }
+			if ( ! $this->_handle->setex( $lock_key, 300, time() ) )
+			{
+				return FALSE;
+			}
 
-    // ------------------------------------------------------------------------
+			$this->_lock_key = $lock_key;
+			break;
+		}
+		while ( $attempt++ < 30 );
 
-    /**
-     * Release lock
-     *
-     * Releases a previously acquired lock
-     *
-     * @access  protected
-     * @return  bool
-     */
-    protected function _release_lock()
-    {
-        if( isset( $this->_handle, $this->_lock_key ) && $this->_lock )
-        {
-            if( ! $this->_handle->delete( $this->_lock_key ) )
-            {
-                return FALSE;
-            }
+		if ( $attempt === 30 )
+		{
+			return FALSE;
+		}
 
-            $this->_lock_key = NULL;
-            $this->_lock = FALSE;
-        }
+		$this->_lock = TRUE;
 
-        return TRUE;
-    }
+		return TRUE;
+	}
+
+	// ------------------------------------------------------------------------
+
+	/**
+	 * Release lock
+	 *
+	 * Releases a previously acquired lock
+	 *
+	 * @access  protected
+	 * @return  bool
+	 */
+	protected function _release_lock()
+	{
+		if ( isset( $this->_handle, $this->_lock_key ) && $this->_lock )
+		{
+			if ( ! $this->_handle->delete( $this->_lock_key ) )
+			{
+				return FALSE;
+			}
+
+			$this->_lock_key = NULL;
+			$this->_lock = FALSE;
+		}
+
+		return TRUE;
+	}
 
 }
