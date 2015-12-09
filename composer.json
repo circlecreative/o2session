@@ -2,7 +2,6 @@
 	"name"        : "o2system/o2session",
 	"description" : "O2Session is a PHP Session Management Library. It's Allows different storage engines to be used.",
 	"license"     : "MIT",
-	"version"     : "1.0.0",
 	"type"        : "php-libraries",
 	"keywords"    : [ "utilities", "php", "framework", "driver", "libraries", "session" ],
 	"authors"     : [
@@ -42,8 +41,8 @@
 	},
 	"require"     : {
 		"php"           : ">=5.4.0",
-		"o2system/o2glob":"dev-master",
-		"o2system/o2db" : "dev-master"
+		"o2system/o2glob":"*",
+		"o2system/o2db" : "*"
 	},
 	"autoload"    : {
 		"psr-4" : {
