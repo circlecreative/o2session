@@ -52,359 +52,414 @@ use O2System\DB;
  * @package       o2session
  * @subpackage    drivers
  * @category      Sessions
- * @author        Circle Creative Developer Team
+ * @author        O2System Developer Team
  * @link          http://o2system.in/features/o2session/user-guide/drivers/database.html
  */
 class Database extends Driver implements \SessionHandlerInterface
 {
-    /**
-     * O2System DB Resource
-     *
-     * @access  protected
-     * @type    object
-     */
-    protected $_db;
+	/**
+	 * O2System DB Resource
+	 *
+	 * @access  protected
+	 * @type    object
+	 */
+	protected $_db;
 
-    /**
-     * Row exists flag
-     *
-     * @access  protected
-     * @type    bool
-     */
-    protected $_row_exists = FALSE;
+	/**
+	 * Row exists flag
+	 *
+	 * @access  protected
+	 * @type    bool
+	 */
+	protected $_row_exists = FALSE;
 
-    /**
-     * DB Driver Platform
-     *
-     * @access  protected
-     * @type    string
-     */
-    protected $_platform;
+	/**
+	 * DB Driver Platform
+	 *
+	 * @access  protected
+	 * @type    string
+	 */
+	protected $_platform;
 
-    // ------------------------------------------------------------------------
+	// ------------------------------------------------------------------------
 
-    /**
-     * Class constructor
-     *
-     * @uses    O2System\DB()
-     *
-     * @param    array $params Configuration parameters
-     *
-     * @access  public
-     * @throws  \InvalidArgumentException
-     */
-    public function __construct( &$params )
-    {
-        parent::__construct( $params );
+	/**
+	 * Class constructor
+	 *
+	 * @uses    O2System\DB()
+	 *
+	 * @param    array $params Configuration parameters
+	 *
+	 * @access  public
+	 * @throws  \InvalidArgumentException
+	 */
+	public function __construct( &$params )
+	{
+		if ( empty( $params[ 'storage' ][ 'save_path' ] ) )
+		{
+			throw new \InvalidArgumentException( 'Session: No Database save path configured.' );
+		}
+		elseif ( is_string( $params[ 'storage' ][ 'save_path' ] ) AND strpos( $params[ 'storage' ][ 'save_path' ], '://' ) !== FALSE )
+		{
+			/**
+			 * Parse the URL from the DSN string
+			 * parameters or as a data source name in the first
+			 * parameter. DSNs must have this prototype:
+			 * $dsn = 'mysql://username:password@hostname:port/database?table=session_table';
+			 */
+			if ( ( $dsn = @parse_url( $params[ 'storage' ][ 'save_path' ] ) ) === FALSE )
+			{
+				throw new \InvalidArgumentException( 'Session: Invalid Database save path format: ' . $params[ 'storage' ][ 'save_path' ] );
+			}
 
-        if( ! isset( $this->_config[ 'database' ] ) )
-        {
-            throw new \InvalidArgumentException( 'Session: No database connection configured.' );
-        }
+			$params[ 'storage' ][ 'save_path' ] = array(
+				'driver'   => $dsn[ 'scheme' ],
+				'hostname' => isset( $dsn[ 'host' ] ) ? rawurldecode( $dsn[ 'host' ] ) : '',
+				'port'     => isset( $dsn[ 'port' ] ) ? rawurldecode( $dsn[ 'port' ] ) : '',
+				'username' => isset( $dsn[ 'user' ] ) ? rawurldecode( $dsn[ 'user' ] ) : '',
+				'password' => isset( $dsn[ 'pass' ] ) ? rawurldecode( $dsn[ 'pass' ] ) : '',
+				'database' => isset( $dsn[ 'path' ] ) ? rawurldecode( substr( $dsn[ 'path' ], 1 ) ) : '',
+			);
 
-        $DB = new DB();
+			// Validate Connection
+			$params[ 'storage' ][ 'save_path' ][ 'username' ] = $params[ 'storage' ][ 'save_path' ][ 'username' ] === 'username' ? NULL : $params[ 'storage' ][ 'save_path' ][ 'username' ];
+			$params[ 'storage' ][ 'save_path' ][ 'password' ] = $params[ 'storage' ][ 'save_path' ][ 'password' ] === 'password' ? NULL : $params[ 'storage' ][ 'save_path' ][ 'password' ];
+			$params[ 'storage' ][ 'save_path' ][ 'hostname' ] = $params[ 'storage' ][ 'save_path' ][ 'hostname' ] === 'hostname' ? NULL : $params[ 'storage' ][ 'save_path' ][ 'hostname' ];
 
-        $this->_db = $DB->connect( $this->_config[ 'database' ] );
+			// Were additional config items set?
+			if ( isset( $dsn[ 'query' ] ) )
+			{
+				parse_str( $dsn[ 'query' ], $extra );
 
-        $this->_platform = strtolower( $this->_db->platform() );
-    }
+				foreach ( $extra as $key => $value )
+				{
+					if ( is_string( $value ) AND in_array( strtoupper( $value ), array( 'TRUE', 'FALSE', 'NULL' ) ) )
+					{
+						$value = var_export( $value, TRUE );
+					}
 
-    // ------------------------------------------------------------------------
+					$params[ 'storage' ][ 'save_path' ][ $key ] = $value;
+				}
+			}
+		}
 
-    /**
-     * Open
-     *
-     * Initializes the database connection
-     *
-     * @param   string $save_path Table name
-     * @param   string $name      Session cookie name, unused
-     *
-     * @access  public
-     * @return  bool
-     */
-    public function open( $save_path, $name )
-    {
-        return $this->_db->is_connected();
-    }
+		if ( ! isset( $params[ 'storage' ][ 'save_path' ][ 'driver' ] ) AND ! isset( $params[ 'storage' ][ 'save_path' ][ 'hostname' ] ) )
+		{
+			throw new \InvalidArgumentException( 'Session: Invalid Database save path format: ' . $params[ 'storage' ][ 'save_path' ] );
+		}
 
-    // ------------------------------------------------------------------------
+		parent::__construct( $params );
 
-    /**
-     * Read
-     *
-     * Reads session data and acquires a lock
-     *
-     * @param   string $session_id Session ID
-     *
-     * @access  public
-     * @return  string  Serialized session data
-     */
-    public function read( $session_id )
-    {
-        if( $this->_get_lock( $session_id ) !== FALSE )
-        {
-            // Needed by write() to detect session_regenerate_id() calls
-            $this->_session_id = $session_id;
+		if ( empty( $this->_config[ 'storage' ][ 'save_path' ] ) )
+		{
+			throw new \InvalidArgumentException( 'Session: No Database save path configured.' );
+		}
 
-            $this->_db
-                ->select( 'data' )
-                ->from( $this->_config[ 'storage' ][ 'save_path' ] )
-                ->where( 'id', $session_id );
+		if ( $this->_config[ 'storage' ][ 'match_ip' ] === TRUE )
+		{
+			$this->_key_prefix .= $_SERVER[ 'REMOTE_ADDR' ] . ':';
+		}
+	}
 
-            if( $this->_config[ 'storage' ][ 'match_ip' ] )
-            {
-                $this->_db->where( 'ip_address', $_SERVER[ 'REMOTE_ADDR' ] );
-            }
+	// ------------------------------------------------------------------------
 
-            if( ( $result = $this->_db->get()->row() ) === NULL )
-            {
-                $this->_fingerprint = md5( '' );
+	/**
+	 * Open
+	 *
+	 * Initializes the database connection
+	 *
+	 * @param   string $save_path Table name
+	 * @param   string $name      Session cookie name, unused
+	 *
+	 * @access  public
+	 * @return  bool
+	 */
+	public function open( $save_path, $name )
+	{
+		if ( class_exists( 'O2System\DB' ) )
+		{
+			$this->_db = new DB( $this->_config[ 'save_path' ] );
 
-                return '';
-            }
+			return TRUE;
+		}
 
-            // PostgreSQL's variant of a BLOB datatype is Bytea, which is a
-            // PITA to work with, so we use base64-encoded data in a TEXT
-            // field instead.
-            $result = ( $this->_platform === 'postgre' )
-                ? base64_decode( rtrim( $result->data ) )
-                : $result->data;
+		return FALSE;
+	}
 
-            $this->_fingerprint = md5( $result );
-            $this->_row_exists = TRUE;
+	// ------------------------------------------------------------------------
 
-            return $result;
-        }
+	/**
+	 * Read
+	 *
+	 * Reads session data and acquires a lock
+	 *
+	 * @param   string $session_id Session ID
+	 *
+	 * @access  public
+	 * @return  string  Serialized session data
+	 */
+	public function read( $session_id )
+	{
+		if ( $this->_get_lock( $session_id ) !== FALSE )
+		{
+			// Needed by write() to detect session_regenerate_id() calls
+			$this->_session_id = $session_id;
 
-        $this->_fingerprint = md5( '' );
+			$this->_db
+				->select( 'data' )
+				->from( $this->_config[ 'storage' ][ 'save_path' ][ 'table' ] )
+				->where( 'id', $session_id );
 
-        return '';
-    }
+			if ( $this->_config[ 'storage' ][ 'match_ip' ] )
+			{
+				$this->_db->where( 'ip_address', $_SERVER[ 'REMOTE_ADDR' ] );
+			}
 
-    // ------------------------------------------------------------------------
+			if ( ( $result = $this->_db->get()->row() ) === NULL )
+			{
+				$this->_fingerprint = md5( '' );
 
-    /**
-     * Write
-     *
-     * Writes (create / update) session data
-     *
-     * @param   string $session_id   Session ID
-     * @param   string $session_data Serialized session data
-     *
-     * @access  public
-     * @return  bool
-     */
-    public function write( $session_id, $session_data )
-    {
-        // Was the ID regenerated?
-        if( $session_id !== $this->_session_id )
-        {
-            if( ! $this->_release_lock() OR ! $this->_get_lock( $session_id ) )
-            {
-                return FALSE;
-            }
+				return '';
+			}
 
-            $this->_row_exists = FALSE;
-            $this->_session_id = $session_id;
-        }
-        elseif( $this->_lock === FALSE )
-        {
-            return FALSE;
-        }
+			// PostgreSQL's variant of a BLOB datatype is Bytea, which is a
+			// PITA to work with, so we use base64-encoded data in a TEXT
+			// field instead.
+			$result = ( $this->_platform === 'postgre' )
+				? base64_decode( rtrim( $result->data ) )
+				: $result->data;
 
-        if( $this->_row_exists === FALSE )
-        {
-            $insert_data = array(
-                'id'         => $session_id,
-                'ip_address' => $_SERVER[ 'REMOTE_ADDR' ],
-                'start'      => time(),
-                'data'       => ( $this->_platform === 'postgre' ? base64_encode( $session_data ) : $session_data )
-            );
+			$this->_fingerprint = md5( $result );
+			$this->_row_exists = TRUE;
 
-            if( $this->_db->insert( $this->_config[ 'storage' ][ 'save_path' ], $insert_data ) )
-            {
-                $this->_fingerprint = md5( $session_data );
+			return $result;
+		}
 
-                return $this->_row_exists = TRUE;
-            }
+		$this->_fingerprint = md5( '' );
 
-            return FALSE;
-        }
+		return '';
+	}
 
-        $this->_db->where( 'id', $session_id );
-        if( $this->_config[ 'storage' ][ 'match_ip' ] )
-        {
-            $this->_db->where( 'ip_address', $_SERVER[ 'REMOTE_ADDR' ] );
-        }
+	// ------------------------------------------------------------------------
 
-        $update_data = array( 'timestamp' => time() );
-        if( $this->_fingerprint !== md5( $session_data ) )
-        {
-            $update_data[ 'data' ] = ( $this->_platform === 'postgre' )
-                ? base64_encode( $session_data )
-                : $session_data;
-        }
+	/**
+	 * Write
+	 *
+	 * Writes (create / update) session data
+	 *
+	 * @param   string $session_id   Session ID
+	 * @param   string $session_data Serialized session data
+	 *
+	 * @access  public
+	 * @return  bool
+	 */
+	public function write( $session_id, $session_data )
+	{
+		// Was the ID regenerated?
+		if ( $session_id !== $this->_session_id )
+		{
+			if ( ! $this->_release_lock() OR ! $this->_get_lock( $session_id ) )
+			{
+				return FALSE;
+			}
 
-        if( $this->_db->update( $this->_config[ 'storage' ][ 'save_path' ], $update_data ) )
-        {
-            $this->_fingerprint = md5( $session_data );
+			$this->_row_exists = FALSE;
+			$this->_session_id = $session_id;
+		}
+		elseif ( $this->_lock === FALSE )
+		{
+			return FALSE;
+		}
 
-            return TRUE;
-        }
+		if ( $this->_row_exists === FALSE )
+		{
+			$insert_data = array(
+				'id'         => $session_id,
+				'ip_address' => $_SERVER[ 'REMOTE_ADDR' ],
+				'start'      => time(),
+				'data'       => ( $this->_platform === 'postgre' ? base64_encode( $session_data ) : $session_data ),
+			);
 
-        return FALSE;
-    }
+			if ( $this->_db->insert( $this->_config[ 'storage' ][ 'save_path' ][ 'table' ], $insert_data ) )
+			{
+				$this->_fingerprint = md5( $session_data );
 
-    // ------------------------------------------------------------------------
+				return $this->_row_exists = TRUE;
+			}
 
-    /**
-     * Close
-     *
-     * Releases locks
-     *
-     * @access  public
-     * @return  bool
-     */
-    public function close()
-    {
-        return ( $this->_lock )
-            ? $this->_release_lock()
-            : TRUE;
-    }
+			return FALSE;
+		}
 
-    // ------------------------------------------------------------------------
+		$this->_db->where( 'id', $session_id );
+		if ( $this->_config[ 'storage' ][ 'match_ip' ] )
+		{
+			$this->_db->where( 'ip_address', $_SERVER[ 'REMOTE_ADDR' ] );
+		}
 
-    /**
-     * Destroy
-     *
-     * Destroys the current session.
-     *
-     * @param   string $session_id Session ID
-     *
-     * @access  public
-     * @return  bool
-     */
-    public function destroy( $session_id )
-    {
-        if( $this->_lock )
-        {
-            $this->_db->where( 'id', $session_id );
-            if( $this->_config[ 'storage' ][ 'match_ip' ] )
-            {
-                $this->_db->where( 'ip_address', $_SERVER[ 'REMOTE_ADDR' ] );
-            }
+		$update_data = array( 'timestamp' => time() );
+		if ( $this->_fingerprint !== md5( $session_data ) )
+		{
+			$update_data[ 'data' ] = ( $this->_platform === 'postgre' )
+				? base64_encode( $session_data )
+				: $session_data;
+		}
 
-            return $this->_db->delete( $this->_config[ 'storage' ][ 'save_path' ] )
-                ? ( $this->close() && $this->_cookie_destroy() )
-                : FALSE;
-        }
+		if ( $this->_db->update( $this->_config[ 'storage' ][ 'save_path' ][ 'table' ], $update_data ) )
+		{
+			$this->_fingerprint = md5( $session_data );
 
-        return ( $this->close() && $this->_cookie_destroy() );
-    }
+			return TRUE;
+		}
 
-    // ------------------------------------------------------------------------
+		return FALSE;
+	}
 
-    /**
-     * Garbage Collector
-     *
-     * Deletes expired sessions
-     *
-     * @param   int $maxlifetime    Maximum lifetime of sessions
-     *
-     * @access  public
-     * @return  bool
-     */
-    public function gc( $maxlifetime )
-    {
-        return $this->_db->delete( $this->_config[ 'storage' ][ 'save_path' ], 'timestamp < ' . ( time() - $maxlifetime ) );
-    }
+	// ------------------------------------------------------------------------
 
-    // ------------------------------------------------------------------------
+	/**
+	 * Close
+	 *
+	 * Releases locks
+	 *
+	 * @access  public
+	 * @return  bool
+	 */
+	public function close()
+	{
+		return ( $this->_lock )
+			? $this->_release_lock()
+			: TRUE;
+	}
 
-    /**
-     * Get lock
-     *
-     * Acquires a lock, depending on the underlying platform.
-     *
-     * @param   string $session_id Session ID
-     *
-     * @access  public
-     * @return  bool
-     */
-    protected function _get_lock( $session_id )
-    {
-        if( $this->_platform === 'mysql' )
-        {
-<<<<<<< HEAD
-            $arg = $session_id . ( $this->_config[ 'storage' ][ 'match_ip' ] ? '_' . $_SERVER[ 'REMOTE_ADDR' ] : '' );
-=======
-            $arg = $session_id . ( $this->_config[ 'session' ][ 'match_ip' ] ? '_' . $_SERVER[ 'REMOTE_ADDR' ] : '' );
->>>>>>> origin/master
-            if( $this->_db->query( "SELECT GET_LOCK('" . $arg . "', 300) AS o2session_lock" )->row()->o2session_lock )
-            {
-                $this->_lock = $arg;
+	// ------------------------------------------------------------------------
 
-                return TRUE;
-            }
+	/**
+	 * Destroy
+	 *
+	 * Destroys the current session.
+	 *
+	 * @param   string $session_id Session ID
+	 *
+	 * @access  public
+	 * @return  bool
+	 */
+	public function destroy( $session_id )
+	{
+		if ( $this->_lock )
+		{
+			$this->_db->where( 'id', $session_id );
+			if ( $this->_config[ 'storage' ][ 'match_ip' ] )
+			{
+				$this->_db->where( 'ip_address', $_SERVER[ 'REMOTE_ADDR' ] );
+			}
 
-            return FALSE;
-        }
-        elseif( $this->_platform === 'postgre' )
-        {
-            $arg = "hashtext('" . $session_id . "')" . ( $this->_config[ 'storage' ][ 'match_ip' ] ? ", hashtext('" . $_SERVER[ 'REMOTE_ADDR' ] . "')" : '' );
-            if( $this->_db->simple_query( 'SELECT pg_advisory_lock(' . $arg . ')' ) )
-            {
-                $this->_lock = $arg;
+			return $this->_db->delete( $this->_config[ 'storage' ][ 'save_path' ][ 'table' ] )
+				? ( $this->close() && $this->_cookie_destroy() )
+				: FALSE;
+		}
 
-                return TRUE;
-            }
+		return ( $this->close() && $this->_cookie_destroy() );
+	}
 
-            return FALSE;
-        }
+	// ------------------------------------------------------------------------
 
-        return parent::_get_lock( $session_id );
-    }
+	/**
+	 * Garbage Collector
+	 *
+	 * Deletes expired sessions
+	 *
+	 * @param   int $maxlifetime Maximum lifetime of sessions
+	 *
+	 * @access  public
+	 * @return  bool
+	 */
+	public function gc( $maxlifetime )
+	{
+		return $this->_db->delete( $this->_config[ 'storage' ][ 'save_path' ][ 'table' ], 'timestamp < ' . ( time() - $maxlifetime ) );
+	}
 
-    // ------------------------------------------------------------------------
+	// ------------------------------------------------------------------------
 
-    /**
-     * Release lock
-     *
-     * Releases a previously acquired lock
-     *
-     * @access  public
-     * @return  bool
-     */
-    protected function _release_lock()
-    {
-        if( ! $this->_lock )
-        {
-            return TRUE;
-        }
+	/**
+	 * Get lock
+	 *
+	 * Acquires a lock, depending on the underlying platform.
+	 *
+	 * @param   string $session_id Session ID
+	 *
+	 * @access  public
+	 * @return  bool
+	 */
+	protected function _get_lock( $session_id )
+	{
+		if ( $this->_platform === 'mysql' )
+		{
+			$arg = $session_id . ( $this->_config[ 'storage' ][ 'match_ip' ] ? '_' . $_SERVER[ 'REMOTE_ADDR' ] : '' );
+			if ( $this->_db->query( "SELECT GET_LOCK('" . $arg . "', 300) AS o2session_lock" )->row()->o2session_lock )
+			{
+				$this->_lock = $arg;
 
-        if( $this->_platform === 'mysql' )
-        {
-            if( $this->_db->query( "SELECT RELEASE_LOCK('" . $this->_lock . "') AS o2session_lock" )->row()->o2session_lock )
-            {
-                $this->_lock = FALSE;
+				return TRUE;
+			}
 
-                return TRUE;
-            }
+			return FALSE;
+		}
+		elseif ( $this->_platform === 'postgre' )
+		{
+			$arg = "hashtext('" . $session_id . "')" . ( $this->_config[ 'storage' ][ 'match_ip' ] ? ", hashtext('" . $_SERVER[ 'REMOTE_ADDR' ] . "')" : '' );
+			if ( $this->_db->execute( 'SELECT pg_advisory_lock(' . $arg . ')' ) )
+			{
+				$this->_lock = $arg;
 
-            return FALSE;
-        }
-        elseif( $this->_platform === 'postgre' )
-        {
-            if( $this->_db->simple_query( 'SELECT pg_advisory_unlock(' . $this->_lock . ')' ) )
-            {
-                $this->_lock = FALSE;
+				return TRUE;
+			}
 
-                return TRUE;
-            }
+			return FALSE;
+		}
 
-            return FALSE;
-        }
+		return parent::_get_lock( $session_id );
+	}
 
-        return parent::_release_lock();
-    }
+	// ------------------------------------------------------------------------
+
+	/**
+	 * Release lock
+	 *
+	 * Releases a previously acquired lock
+	 *
+	 * @access  public
+	 * @return  bool
+	 */
+	protected function _release_lock()
+	{
+		if ( ! $this->_lock )
+		{
+			return TRUE;
+		}
+
+		if ( $this->_platform === 'mysql' )
+		{
+			if ( $this->_db->query( "SELECT RELEASE_LOCK('" . $this->_lock . "') AS o2session_lock" )->row()->o2session_lock )
+			{
+				$this->_lock = FALSE;
+
+				return TRUE;
+			}
+
+			return FALSE;
+		}
+		elseif ( $this->_platform === 'postgre' )
+		{
+			if ( $this->_db->simple_query( 'SELECT pg_advisory_unlock(' . $this->_lock . ')' ) )
+			{
+				$this->_lock = FALSE;
+
+				return TRUE;
+			}
+
+			return FALSE;
+		}
+
+		return parent::_release_lock();
+	}
 }
