@@ -51,7 +51,7 @@ use O2System\Session\Interfaces\Driver;
  * @package       o2session
  * @subpackage    Drivers
  * @category      Sessions
- * @author        Circle Creative Developer Team
+ * @author        O2System Developer Team
  * @link          http://o2system.in/features/o2session/user-guide/drivers/files
  */
 class Files extends Driver implements \SessionHandlerInterface
@@ -93,11 +93,7 @@ class Files extends Driver implements \SessionHandlerInterface
     {
         parent::__construct( $params );
 
-<<<<<<< HEAD
         if( isset( $this->_config[ 'storage' ][ 'save_path' ] ) )
-=======
-        if( isset( $this->_config[ 'session' ][ 'save_path' ] ) )
->>>>>>> origin/master
         {
             $this->_config[ 'storage' ][ 'save_path' ] = rtrim( $this->_config[ 'storage' ][ 'save_path' ], '/\\' );
             ini_set( 'session.save_path', $this->_config[ 'storage' ][ 'save_path' ] );
@@ -140,7 +136,7 @@ class Files extends Driver implements \SessionHandlerInterface
                             . $name // we'll use the session cookie name as a prefix to avoid collisions
                             . ( $this->_config[ 'storage' ][ 'match_ip' ] ? md5( $_SERVER[ 'REMOTE_ADDR' ] ) : '' );
 
-        $this->_file_path = str_replace( '/', DS, $this->_file_path );
+        $this->_file_path = str_replace( '/', DIRECTORY_SEPARATOR, $this->_file_path );
 
         return TRUE;
     }
