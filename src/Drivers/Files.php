@@ -6,7 +6,7 @@
  *
  * This content is released under the MIT License (MIT)
  *
- * Copyright (c) 2014, PT. Lingkar Kreasi (Circle Creative).
+ * Copyright (c) 2014, .
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -28,7 +28,7 @@
  *
  * @package        O2System
  * @author         Steeven Andrian Salim
- * @copyright      Copyright (c) 2005 - 2014, PT. Lingkar Kreasi (Circle Creative).
+ * @copyright      Copyright (c) 2005 - 2014, .
  * @license        http://o2system.in/features/o2session/license
  * @license        http://opensource.org/licenses/MIT	MIT License
  * @link           http://o2system.in
@@ -166,7 +166,7 @@ class Files extends Driver implements \SessionHandlerInterface
             // Just using fopen() with 'c+b' mode would be perfect, but it is only
             // available since PHP 5.2.6 and we have to set permissions for new files,
             // so we'd have to hack around this ...
-            if( ( $this->_file_new = ! file_exists( $this->_file_path . $session_id ) ) === TRUE )
+            if( ( $this->_file_new = ! is_file( $this->_file_path . $session_id ) ) === TRUE )
             {
                 if( ( $this->_handle = fopen( $this->_file_path . $session_id, 'w+b' ) ) === FALSE )
                 {
@@ -320,7 +320,7 @@ class Files extends Driver implements \SessionHandlerInterface
     {
         if( $this->close() )
         {
-            return file_exists( $this->_file_path . $session_id )
+            return is_file( $this->_file_path . $session_id )
                 ? ( unlink( $this->_file_path . $session_id ) && $this->_cookie_destroy() )
                 : TRUE;
         }
@@ -328,7 +328,7 @@ class Files extends Driver implements \SessionHandlerInterface
         {
             clearstatcache();
 
-            return file_exists( $this->_file_path . $session_id )
+            return is_file( $this->_file_path . $session_id )
                 ? ( unlink( $this->_file_path . $session_id ) && $this->_cookie_destroy() )
                 : TRUE;
         }

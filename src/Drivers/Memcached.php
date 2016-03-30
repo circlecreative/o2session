@@ -6,7 +6,7 @@
  *
  * This content is released under the MIT License (MIT)
  *
- * Copyright (c) 2014, PT. Lingkar Kreasi (Circle Creative).
+ * Copyright (c) 2014, .
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -28,7 +28,7 @@
  *
  * @package        O2System
  * @author         Steeven Andrian Salim
- * @copyright      Copyright (c) 2005 - 2014, PT. Lingkar Kreasi (Circle Creative).
+ * @copyright      Copyright (c) 2005 - 2014, .
  * @license        http://o2system.in/features/o2session/license
  * @license        http://opensource.org/licenses/MIT	MIT License
  * @link           http://o2system.in
@@ -175,22 +175,22 @@ class Memcached extends Driver implements \SessionHandlerInterface
 		{
 			// Third parameter is persistance and defaults to TRUE.
 			$this->_handle->addServer(
-				$this->_config[ 'save_path' ][ 'host' ],
-				$this->_config[ 'save_path' ][ 'port' ],
+				$this->_config[ 'storage' ][ 'save_path' ][ 'host' ],
+				$this->_config[ 'storage' ][ 'save_path' ][ 'port' ],
 				TRUE,
-				$this->_config[ 'save_path' ][ 'weight' ]
+				$this->_config[ 'storage' ][ 'save_path' ][ 'weight' ]
 			);
 		}
 		else
 		{
 			$this->_handle->addServer(
-				$this->_config[ 'save_path' ][ 'host' ],
-				$this->_config[ 'save_path' ][ 'port' ],
-				$this->_config[ 'save_path' ][ 'weight' ]
+				$this->_config[ 'storage' ][ 'save_path' ][ 'host' ],
+				$this->_config[ 'storage' ][ 'save_path' ][ 'port' ],
+				$this->_config[ 'storage' ][ 'save_path' ][ 'weight' ]
 			);
-		}
 
-		$this->_handle->setOption( \Memcached::OPT_BINARY_PROTOCOL, TRUE ); // required for touch() usage
+			$this->_handle->setOption( \Memcached::OPT_BINARY_PROTOCOL, TRUE ); // required for touch() usage
+		}
 
 		return TRUE;
 	}
@@ -256,20 +256,47 @@ class Memcached extends Driver implements \SessionHandlerInterface
 
 		if ( isset( $this->_lock_key ) )
 		{
-			$this->_handle->replace( $this->_lock_key, time(), 300 );
+			if ( get_class( $this->_handle ) === 'Memcache' )
+			{
+				$this->_handle->replace( $this->_lock_key, time(), FALSE, 300 );
+			}
+			else
+			{
+				$this->_handle->replace( $this->_lock_key, time(), 300 );
+			}
+
 			if ( $this->_fingerprint !== ( $fingerprint = md5( $session_data ) ) )
 			{
-				if ( $this->_handle->set( $this->_key_prefix . $session_id, $session_data, $this->_config[ 'storage' ][ 'lifetime' ] ) )
+				if ( get_class( $this->_handle ) === 'Memcache' )
 				{
-					$this->_fingerprint = $fingerprint;
+					if ( $this->_handle->set( $this->_key_prefix . $session_id, $session_data, FALSE, $this->_config[ 'storage' ][ 'lifetime' ] ) )
+					{
+						$this->_fingerprint = $fingerprint;
 
-					return TRUE;
+						return TRUE;
+					}
+				}
+				else
+				{
+					if ( $this->_handle->set( $this->_key_prefix . $session_id, $session_data, $this->_config[ 'storage' ][ 'lifetime' ] ) )
+					{
+						$this->_fingerprint = $fingerprint;
+
+						return TRUE;
+					}
 				}
 
 				return FALSE;
 			}
 
-			return $this->_handle->touch( $this->_key_prefix . $session_id, $this->_config[ 'storage' ][ 'lifetime' ] );
+			if ( get_class( $this->_handle ) === 'Memcache' )
+			{
+				// set new lifetime
+			}
+			else
+			{
+				return $this->_handle->touch( $this->_key_prefix . $session_id, $this->_config[ 'storage' ][ 'lifetime' ] );
+			}
 		}
 
 		return FALSE;
@@ -290,9 +317,20 @@ class Memcached extends Driver implements \SessionHandlerInterface
 		if ( isset( $this->_handle ) )
 		{
 			isset( $this->_lock_key ) && $this->_handle->delete( $this->_lock_key );
-			if ( ! $this->_handle->quit() )
+
+			if ( method_exists( $this->_handle, 'quit' ) )
 			{
-				return FALSE;
+				if ( ! $this->_handle->quit() )
+				{
+					return FALSE;
+				}
+			}
+			elseif ( method_exists( $this->_handle, 'close' ) )
+			{
+				if ( ! $this->_handle->close() )
+				{
+					return FALSE;
+				}
 			}
 
 			$this->_handle = NULL;
@@ -375,9 +413,19 @@ class Memcached extends Driver implements \SessionHandlerInterface
 				continue;
 			}
 
-			if ( ! $this->_handle->set( $lock_key, time(), 300 ) )
+			if ( get_class( $this->_handle ) === 'Memcache' )
 			{
-				return FALSE;
+				if ( ! $this->_handle->set( $lock_key, time(), FALSE, 300 ) )
+				{
+					return FALSE;
+				}
+			}
+			else
+			{
+				if ( ! $this->_handle->set( $lock_key, time(), 300 ) )
+				{
+					return FALSE;
+				}
 			}
 
 			$this->_lock_key = $lock_key;
@@ -422,5 +470,4 @@ class Memcached extends Driver implements \SessionHandlerInterface
 
 		return TRUE;
 	}
-
 }
