@@ -12,43 +12,53 @@
             font-family: 'Roboto';
             font-size: 12px;
         }
+
         .error-wrapper {
             font-family: 'Roboto';
             font-size: 12px;
             color:#303641;
             margin: 50px;
         }
+
+
         * {
             margin: 0px;
             padding: 0px;
         }
+
         a {
             text-decoration: none !important;
         }
+
         h1 {
             font-size: 28px;
             color: #e73d2f;
             text-transform: uppercase;
             padding: 20px 0px 0px 0px;
         }
+
         h2 {
             font-size: 16px;
             text-transform: uppercase;
         }
+
         .error-text {
             color: #e73d2f;
             font-weight: 800;
         }
+
         p {
             font-size: 14px;
             padding: 10px 0px;
             font-weight: 400;
         }
+
         .copyright {
             font-weight: 400;
             font-size: 10px;
             text-transform: uppercase;
         }
+
         small {
             font-size: 8px;
             text-transform: uppercase;
