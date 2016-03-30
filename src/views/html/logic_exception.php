@@ -7,61 +7,59 @@
     <link href='https://fonts.googleapis.com/css?family=Roboto' rel='stylesheet' type='text/css'>
 
     <style type="text/css">
+        @charset "utf-8";
         /* CSS Document */
         body {
             font-family: 'Roboto';
             font-size: 12px;
         }
-
         .error-wrapper {
             font-family: 'Roboto';
             font-size: 12px;
             color:#303641;
             margin: 50px;
         }
-
-
         * {
             margin: 0px;
             padding: 0px;
         }
-
         a {
             text-decoration: none !important;
         }
-
         h1 {
             font-size: 28px;
             color: #e73d2f;
             text-transform: uppercase;
             padding: 20px 0px 0px 0px;
         }
-
         h2 {
             font-size: 16px;
             text-transform: uppercase;
         }
-
         .error-text {
             color: #e73d2f;
             font-weight: 800;
         }
-
         p {
             font-size: 14px;
             padding: 10px 0px;
             font-weight: 400;
         }
-
         .copyright {
             font-weight: 400;
             font-size: 10px;
             text-transform: uppercase;
         }
-
         small {
             font-size: 8px;
             text-transform: uppercase;
+        }
+        table {
+            margin:10px 0px;
+            font-size: 11px;
+        }
+        table td {
+            padding: 5px 0px;
         }
     </style>
 </head>
@@ -75,7 +73,40 @@
             <small><?php echo $description; ?></small>
         <?php endif; ?>
 
-        <p class="error-text"><?php echo $exception->getMessage(); ?></p>
+        <table>
+            <tr>
+                <td colspan="3"><h3><?php echo $exception->getMessage(); ?></h3></td>
+            </tr>
+            <tr>
+                <td>Filename</td>
+                <td>:</td>
+                <td><?php echo $exception->getFile(); ?></td>
+            </tr>
+            <tr>
+                <td>Line Number</td>
+                <td>:</td>
+                <td><?php echo $exception->getLine(); ?></td>
+            </tr>
+            <tr>
+                <td valign="top">Trace</td>
+                <td valign="top">:</td>
+                <td valign="top">
+                    <ol style="margin:1px 15px 15px 15px;">
+                    <?php if(isset($tracer)): ?>
+                        <?php foreach ($tracer->chronology() as $chronology): ?>
+
+                            <li style="padding-bottom: 5px;">
+                                <?php echo $chronology->call; ?><br>
+                                <?php echo 'File: '.@realpath($chronology->file); ?><br>
+                                <?php echo 'Line: '.$chronology->line; ?>
+                            </li>
+
+                        <?php endforeach ?>
+                    <?php endif; ?>
+                    </ol>
+                </td>
+            </tr>
+        </table>
 
         <div class="copyright">
             O2System Session (O2Session)<br/>
