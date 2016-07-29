@@ -62,6 +62,6 @@ Please kindly submit your [issues at Github](https://github.com/circlecreative/o
 ### Credits
 |Role|Name|
 |----|----|
-|Founder and Lead Projects|[Steeven Andrian Salim (steevenz.com)](http://steevenz.com)|
+|Founder and Lead Projects|[Steeven Andrian Salim](http://steevenz.com)|
 |Documentation|[Steeven Andrian Salim](http://steevenz.com), [Ayun G. Wibowo](http://ayun.co)|
 > Special Thanks To: [Yudi Primaputra (CTO - PT. YukBisnis Indonesia)](http://yukbisnis.com/xpartacvs)
